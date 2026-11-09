@@ -1,0 +1,9 @@
+{
+  "name": "lillachatten",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Lillachatten med beständig PostgreSQL-lagring",
+  "scripts": {"start":"node server.js"},
+  "engines": {"node": ">=20"},
+  "dependencies": {"pg": "^8.13.3"}
+}
