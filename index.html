@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lillachatten 0.8</title>
+<title>Lillachatten 0.9</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#263445;background:#f4f6f9}*{box-sizing:border-box}body{margin:0}header{background:#fff;border-bottom:1px solid #e1e5ec}.head,main{max-width:720px;margin:auto;padding:20px}.head{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:750;font-size:1.3rem;color:#2458a6}.muted{color:#667486;font-size:.89rem}h1{font-size:1.5rem}h2{font-size:1.05rem}section,article{background:#fff;border:1px solid #e3e7ef;border-radius:13px;padding:20px;margin-bottom:15px;box-shadow:0 1px 3px #172c4410}label{display:block;font-weight:650;margin:12px 0 6px}input,textarea{display:block;width:100%;border:1px solid #cbd3df;border-radius:9px;padding:11px 12px;font:inherit;color:#263445;background:white}textarea{min-height:100px;resize:vertical}button{background:#2865b0;color:white;border:0;border-radius:9px;padding:10px 16px;font:inherit;font-weight:650;cursor:pointer;margin-top:12px}button:hover{background:#1e4f90}.secondary{background:#e9eff7;color:#2458a6}.secondary:hover{background:#dce7f5}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row input{flex:1;min-width:160px}.row button{margin-top:0}.small{font-size:.8rem;color:#748093}.author{font-weight:750}.body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-top:12px}.comment{background:#f5f7fa;border-radius:8px;padding:10px;margin-top:8px;overflow-wrap:anywhere}.comments{border-top:1px solid #e8edf3;margin-top:16px;padding-top:10px}.error{color:#b42318;margin-top:10px}.hidden{display:none!important}.cardTitle{margin:0 0 15px}#sessionName{font-size:.9rem;color:#667486}footer{text-align:center;padding:20px;color:#8a96a6;font-size:.8rem}@media(max-width:500px){.head,main{padding:15px}section,article{padding:16px}}
 
@@ -44,6 +44,22 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 .postActions .likeButton{background:transparent;color:#52677d;border:1px solid #d5dce5}
 .postActions .likeButton.liked{color:#b42345;border-color:#e8a4b4;background:#fff6f8}
 .editPostForm{margin-top:6px}.editPostForm textarea{min-height:66px}
+
+/* Lillachatten 0.9: mobile-first image attachments */
+.imageChooser{margin:8px 0;border:1px dashed #b5c4d7;border-radius:9px;padding:9px;background:#fafcff}
+.imageChooser.dragover{border-color:#2865b0;background:#edf5ff}
+.imageChooser input[type=file]{display:none}
+.imageChooser .chooseBtn{display:inline-block;cursor:pointer;background:#e9eff7;color:#2458a6;border-radius:8px;padding:8px 11px;font-weight:650}
+.imageChooser .row{margin-top:7px}
+.imageChooser .row input{font-size:.88rem;min-width:120px}
+.imageChooser .row button{margin:0}
+.imagePreview{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.imagePreview figure{margin:0;position:relative}
+.imagePreview img{width:86px;height:86px;object-fit:cover;border-radius:7px;border:1px solid #d5dfe9}
+.imagePreview button{position:absolute;right:2px;top:2px;margin:0;padding:2px 6px;font-size:.8rem;background:#263445}
+.postImages{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.postImages img{max-width:100%;max-height:320px;object-fit:contain;border-radius:8px;cursor:zoom-in}
+@media(min-width:520px){.postImages img{max-width:48%}}
 </style></head><body>
 <header><div class="head"><div><div class="brand">Lillachatten</div><div class="muted">Ett eget rum för gemenskap</div></div><div class="row"><span id="sessionName"></span><button id="logoutBtn" class="secondary hidden" type="button">Logga ut</button></div></div></header>
 <main>
@@ -55,10 +71,17 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 <div id="appPanel" class="hidden"><h1 id="associationHeading">Välkommen</h1><p class="muted">Ett gemensamt flöde för föreningens medlemmar.</p>
 <section id="associationPanel"><h2 class="cardTitle">Föreningens namn</h2><form id="associationForm" class="row"><input id="associationName" placeholder="Till exempel Familjen Andersson" maxlength="80" required aria-label="Föreningens namn"><button>Spara namn</button></form></section>
 <section id="inviteAdminPanel" class="hidden"><h2 class="cardTitle">Bjud in medlem</h2><p class="muted">Ange mottagarens e-postadress. Resend skickar inbjudan direkt. Adressen sparas inte i medlemsregistret.</p><form id="inviteForm"><div class="row"><input id="inviteEmail" type="email" placeholder="Mottagarens e-postadress" aria-label="Mottagarens e-postadress" required><button id="sendInviteBtn">Skicka inbjudan</button></div></form><div id="invitationResult" class="hidden"></div><h2 class="cardTitle" style="margin-top:12px">Inbjudningar</h2><div id="invitationsList"></div><h2 class="cardTitle" style="margin-top:12px">Medlemmar</h2><div id="membersList"></div></section>
-<section><h2 class="cardTitle">Skriv ett inlägg</h2><p class="small">Inlägget publiceras med ditt förnamn automatiskt.</p><form id="postForm"><label for="postText">Vad vill du berätta?</label><textarea id="postText" maxlength="5000" required></textarea><button>Publicera</button></form></section>
+<section><h2 class="cardTitle">Skriv ett inlägg</h2><p class="small">Inlägget publiceras med ditt förnamn automatiskt.</p><form id="postForm"><label for="postText">Vad vill du berätta?</label><textarea id="postText" maxlength="5000" placeholder="Skriv något …"></textarea>
+<div id="imageChooser" class="imageChooser">
+<label for="postImagesInput" class="chooseBtn">+ Lägg till bilder</label>
+<input type="file" id="postImagesInput" accept="image/jpeg,image/png,image/gif,image/webp" multiple>
+<span class="small" style="display:inline">Från Finder, kameran eller dra hit (högst 3)</span>
+<div class="row"><input id="imageUrl" type="url" placeholder="https://… bildlänk" aria-label="Bildlänk"><button type="button" class="quietButton" id="addImageUrl">Lägg till länk</button></div>
+<div class="imagePreview" id="imagePreview"></div>
+</div><button id="publishBtn">Publicera</button></form></section>
 <h2>Inlägg</h2><div id="feed"></div></div>
 <p id="message" role="status"></p>
-<footer>Lillachatten 0.8 · Inbjudningar via Resend</footer>
+<footer>Lillachatten 0.9 · Bilder och inbjudningar via Resend</footer>
 </main>
 <script>
 (()=>{'use strict';const $=id=>document.getElementById(id);let me=null;let posts=[];const inviteToken=new URLSearchParams(location.search).get('invite');
@@ -71,6 +94,13 @@ for(const p of posts){const a=element('article');const d=new Date(p.createdAt).t
 a.append(element('span','author',p.author),document.createTextNode(' · '+d));
 if(p.editedAt)a.append(element('span','small',' · redigerat'));
 const content=element('div','body',p.text);a.append(content);
+if(Array.isArray(p.images)&&p.images.length){
+  const gallery=element('div','postImages');
+  for(const id of p.images){const img=element('img');img.src='/api/images/'+id;img.alt='Bild i inlägg';img.loading='lazy';
+    img.addEventListener('click',()=>window.open(img.src,'_blank','noopener'));
+    gallery.append(img);}
+  a.append(gallery);
+}
 const tools=element('div','postActions');
 const likeCount=Number(p.likeCount)||0;
 const liked=!!p.likedByMe;
@@ -111,7 +141,51 @@ $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const pw=$
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/login','POST',{email:$('loginEmail').value,password:$('loginPassword').value});$('loginPassword').value='';msg('');await load()}catch(err){msg(err.message,true)}});
 $('logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout','POST');me=null;msg('Du är utloggad.');await start()}catch(err){msg(err.message,true)}});
 $('associationForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/association','POST',{name:$('associationName').value.trim()});await load();msg('Namnet har sparats.')}catch(err){msg(err.message,true)}});
-$('postForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/posts','POST',{text:$('postText').value.trim()});$('postText').value='';await load();msg('Inlägget publicerat.')}catch(err){msg(err.message,true)}});
+const draftImages=[];
+let imageBusy=false;
+function renderImages(){const preview=$('imagePreview');preview.replaceChildren();for(const [i,im] of draftImages.entries()){
+ const fig=element('figure'),pic=element('img');pic.src='/api/images/'+im.id;pic.alt='Vald bild';
+ const remove=element('button','','×');remove.type='button';remove.setAttribute('aria-label','Ta bort bild');
+ remove.addEventListener('click',async()=>{try{await api('/api/images/'+im.id,'DELETE');draftImages.splice(i,1);renderImages()}catch(e){msg(e.message,true)}});fig.append(pic,remove);preview.append(fig);
+}}
+async function addFile(file){
+ if(draftImages.length>=3)throw Error('Högst tre bilder per inlägg.');
+ // Stora kamerabilder skalas automatiskt ned innan de skickas.
+ if(file.size>2*1024*1024 && /image\/(jpeg|png|webp)/.test(file.type)){
+   const bitmap=await createImageBitmap(file);
+   const ratio=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
+   const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*ratio));canvas.height=Math.max(1,Math.round(bitmap.height*ratio));
+   canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.78));
+   if(blob)file=blob;
+ }
+ if(file.size>2*1024*1024)throw Error('Bilden är för stor (max 2 MB).');
+ const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('Kunde inte läsa bilden.'));reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.readAsDataURL(file)});
+ const result=await api('/api/images/upload','POST',{base64});draftImages.push(result.image);renderImages();
+}
+async function handleFiles(files){
+ if(imageBusy)return;imageBusy=true;
+ try{for(const file of files){await addFile(file)}msg('Bilderna är tillagda.')}
+ catch(e){msg(e.message,true)}finally{imageBusy=false;$('postImagesInput').value=''}
+}
+$('postImagesInput').addEventListener('change',e=>handleFiles(Array.from(e.target.files||[])));
+const zone=$('imageChooser');
+zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('dragover')});
+zone.addEventListener('dragleave',()=>zone.classList.remove('dragover'));
+zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('dragover');handleFiles(Array.from(e.dataTransfer.files||[]))});
+$('addImageUrl').addEventListener('click',async()=>{
+ if(imageBusy)return;const url=$('imageUrl').value.trim();if(!url)return msg('Ange en bildlänk.',true);
+ if(draftImages.length>=3)return msg('Högst tre bilder per inlägg.',true);
+ imageBusy=true;
+ try{const v=await api('/api/images/import','POST',{url});draftImages.push(v.image);$('imageUrl').value='';renderImages();msg('Bilden har hämtats och sparats.')}
+ catch(e){msg(e.message,true)}finally{imageBusy=false}
+});
+$('postForm').addEventListener('submit',async e=>{
+ e.preventDefault();if(imageBusy)return msg('Bildöverföringen pågår.',true);
+ try{await api('/api/posts','POST',{text:$('postText').value.trim(),images:draftImages.map(im=>im.id)});
+ $('postText').value='';draftImages.length=0;renderImages();await load();msg('Inlägget publicerat.')}
+ catch(err){msg(err.message,true)}
+});
 start().catch(e=>msg(e.message,true));
 })();
 </script></body></html>

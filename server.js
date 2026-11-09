@@ -4,11 +4,18 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const dns = require('node:dns').promises;
+const https = require('node:https');
+const net = require('node:net');
 const Pool = process.env.DATABASE_URL ? require('pg').Pool : null;
 const PORT = Number(process.env.PORT || 3000);
 const HOST = (process.env.PORT || process.env.DATABASE_URL) ? '0.0.0.0' : '127.0.0.1';
 const pool = process.env.DATABASE_URL ? new Pool({connectionString:process.env.DATABASE_URL, max:4}) : null;
 const DATA_PATH = path.join(__dirname, 'data', 'state.json');
+const IMAGE_DIR = path.join(__dirname, 'data', 'images');
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGES_POST = 3;
+const imageUploads = new Map();
 const ADMIN_EMAIL = 'olof.hesselmark@gmail.com';
 const ADMIN_NAME = 'Olof';
 const sessions = new Map();
@@ -23,6 +30,10 @@ async function initialize() {
   if (pool && !process.env.SETUP_SECRET) throw Error('SETUP_SECRET måste anges när PostgreSQL används.');
   if (pool) {
     await pool.query('CREATE TABLE IF NOT EXISTS lc_state (id INTEGER PRIMARY KEY CHECK(id=1), value JSONB NOT NULL)');
+    await pool.query(`CREATE TABLE IF NOT EXISTS lc_images (
+      id UUID PRIMARY KEY, owner_email TEXT NOT NULL, mime TEXT NOT NULL,
+      image_data BYTEA NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
     // Brand-new Render databases start empty. Existing local test accounts stay on the Mac.
     await pool.query('INSERT INTO lc_state (id,value) VALUES (1,$1::jsonb) ON CONFLICT (id) DO NOTHING', [JSON.stringify(emptyState())]);
     const result = await pool.query('SELECT value FROM lc_state WHERE id=1');
@@ -61,6 +72,85 @@ async function body(req) {
   let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 20000) throw new Error('För stor begäran'); }
   return JSON.parse(text || '{}');
 }
+// Endast bildformat som kan identifieras från själva filens bytes. SVG tillåts inte.
+function detectImage(data) {
+  if (data.length >= 3 && data.subarray(0,3).equals(Buffer.from([0xff,0xd8,0xff]))) return 'image/jpeg';
+  if (data.length >= 8 && data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return 'image/png';
+  if (data.length >= 6 && ['GIF87a','GIF89a'].includes(data.subarray(0,6).toString('ascii'))) return 'image/gif';
+  if (data.length >= 12 && data.toString('ascii',0,4)==='RIFF' && data.toString('ascii',8,12)==='WEBP') return 'image/webp';
+  return null;
+}
+async function imageBody(req, limit=MAX_IMAGE_BYTES * 1.40 + 2048) {
+  let size=0, parts=[];
+  for await (const chunk of req) {
+    size+=chunk.length;
+    if (size > limit) throw Error('Bilden är för stor (max 2 MB).');
+    parts.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(parts).toString('utf8')||'{}');
+}
+function uploadAllowed(email) {
+  const now=Date.now();
+  const prev=(imageUploads.get(email)||[]).filter(t=>t>now-3600000);
+  if(prev.length>=20) return false;
+  prev.push(now);imageUploads.set(email,prev);return true;
+}
+async function storeImage(email,bytes) {
+  if(!bytes.length || bytes.length>MAX_IMAGE_BYTES) throw Error('Bilden måste vara högst 2 MB.');
+  const mime=detectImage(bytes);
+  if(!mime) throw Error('Bara JPG, PNG, GIF eller WebP stöds.');
+  const id=crypto.randomUUID();
+  if(pool) await pool.query('INSERT INTO lc_images (id,owner_email,mime,image_data) VALUES ($1,$2,$3,$4)',[id,email,mime,bytes]);
+  else {fs.mkdirSync(IMAGE_DIR,{recursive:true,mode:0o700});fs.writeFileSync(path.join(IMAGE_DIR,id+'.bin'),bytes,{mode:0o600});fs.writeFileSync(path.join(IMAGE_DIR,id+'.json'),JSON.stringify({owner:email,mime}),{mode:0o600});}
+  return {id,mime,url:'/api/images/'+id};
+}
+async function imageMeta(id, includeData=false) {
+  if(pool) {
+    const columns=includeData?'owner_email,mime,image_data':'owner_email,mime';
+    const row=await pool.query(`SELECT ${columns} FROM lc_images WHERE id=$1`,[id]);
+    if(!row.rows.length)return null;
+    return {owner:row.rows[0].owner_email,mime:row.rows[0].mime,data:row.rows[0].image_data};
+  }
+  try {
+    const obj=JSON.parse(fs.readFileSync(path.join(IMAGE_DIR,id+'.json'),'utf8'));
+    return {owner:obj.owner,mime:obj.mime,data:includeData?fs.readFileSync(path.join(IMAGE_DIR,id+'.bin')):undefined};
+  }catch(e){if(e.code==='ENOENT')return null;throw e;}
+}
+async function removeImages(ids) {
+  if(!ids.length)return;
+  if(pool)await pool.query('DELETE FROM lc_images WHERE id=ANY($1::uuid[])',[ids]);
+  else for(const id of ids)for(const ext of ['bin','json'])try{fs.unlinkSync(path.join(IMAGE_DIR,id+'.'+ext))}catch(e){if(e.code!=='ENOENT')throw e;}
+}
+function isPublicIPv4(ip) {
+  if(net.isIP(ip)!==4)return false;
+  const [a,b,c]=ip.split('.').map(Number);
+  return !(a===0||a===10||a===127||a>=224||a===169&&b===254||
+    a===172&&b>=16&&b<=31||a===192&&b===168||a===100&&b>=64&&b<=127||
+    a===192&&b===0&&c===0||a===192&&b===0&&c===2||a===198&&b>=18&&b<=19||
+    a===198&&b===51&&c===100||a===203&&b===0&&c===113||a===192&&b===88&&c===99);
+}
+async function fetchPublicImage(raw) {
+  if(typeof raw!=='string'||raw.length>2048)throw Error('Ogiltig bildadress.');
+  let url;
+  try{url=new URL(raw);}catch{throw Error('Ogiltig bildadress.');}
+  if(url.protocol!=='https:'||url.port||url.username||url.password||url.hash||!url.hostname||net.isIP(url.hostname)|| /(?:^|\.)(?:localhost|local|internal)$/.test(url.hostname))
+    throw Error('Använd en offentlig HTTPS-länk till en bild.');
+  const addresses=await dns.resolve4(url.hostname);
+  if(!addresses.length||!addresses.every(isPublicIPv4))throw Error('Bildadressen är inte tillåten.');
+  const pinned=addresses[0];
+  return await new Promise((resolve,reject)=>{
+    const request=https.get(url,{timeout:12000,lookup:(_host,_opts,cb)=>cb(null,pinned,4),headers:{'Accept':'image/jpeg,image/png,image/webp,image/gif','User-Agent':'Lillachatten/0.9'}},response=>{
+      if(response.statusCode!==200){response.resume();return reject(Error('Bilden kunde inte hämtas (HTTP '+response.statusCode+').'));}
+      if(Number(response.headers['content-length']||0)>MAX_IMAGE_BYTES){response.destroy();return reject(Error('Bilden är för stor (max 2 MB).'));}
+      let size=0;const parts=[];
+      response.on('data',chunk=>{size+=chunk.length;if(size>MAX_IMAGE_BYTES){response.destroy();reject(Error('Bilden är för stor (max 2 MB).'));}else parts.push(chunk)});
+      response.on('end',()=>resolve(Buffer.concat(parts)));
+      response.on('error',reject);
+    });
+    request.on('timeout',()=>request.destroy(Error('Bildhämtningen tog för lång tid.')));
+    request.on('error',reject);
+  });
+}
 function session(req) {
   const match = /(?:^|;\s*)lc_session=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || '');
   return match && sessions.get(match[1]);
@@ -82,7 +172,7 @@ const server = http.createServer(async (req,res) => {
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       return fs.createReadStream(path.join(__dirname,'index.html')).pipe(res);
     }
-    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.8',requiresSetupSecret:!!process.env.SETUP_SECRET});
+    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9',requiresSetupSecret:!!process.env.SETUP_SECRET});
     if (pathname === '/api/setup' && req.method==='POST') {
       if (state.users.length) return send(res,409,{error:'Administratören är redan skapad.'});
       const data = await body(req); const pw = data.password;
@@ -131,6 +221,38 @@ const server = http.createServer(async (req,res) => {
     }
     const u = currentUser(req);
     if (!u) return send(res,401,{error:'Logga in först.'});
+    const imageGet=pathname.match(/^\/api\/images\/([a-f0-9-]{36})$/);
+    if(imageGet && req.method==='GET') {
+      const info=await imageMeta(imageGet[1],true);
+      if(!info)return send(res,404,{error:'Bilden hittades inte.'});
+      res.writeHead(200,{'Content-Type':info.mime,'Content-Length':info.data.length,
+        'Cache-Control':'private, max-age=600','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+      return res.end(info.data);
+    }
+    if(imageGet && req.method==='DELETE') {
+      const info=await imageMeta(imageGet[1]);
+      if(!info)return send(res,404,{error:'Bilden hittades inte.'});
+      if(info.owner!==u.email)return send(res,403,{error:'Du kan bara ta bort dina egna bilder.'});
+      if(state.posts.some(p=>(p.images||[]).includes(imageGet[1])))
+        return send(res,409,{error:'Bilden används redan i ett inlägg.'});
+      await removeImages([imageGet[1]]);return send(res,200,{ok:true});
+    }
+    if(pathname==='/api/images/upload' && req.method==='POST') {
+      const data=await imageBody(req);
+      if(typeof data.base64!=='string'||data.base64.length>Math.ceil(MAX_IMAGE_BYTES*4/3)+8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data.base64))
+        return send(res,400,{error:'Ogiltig eller för stor bild.'});
+      const bytes=Buffer.from(data.base64,'base64');
+      if(!detectImage(bytes))return send(res,400,{error:'Bara JPG, PNG, GIF eller WebP stöds.'});
+      if(bytes.length>MAX_IMAGE_BYTES)return send(res,413,{error:'Bilden är för stor (max 2 MB).'});
+      if(!uploadAllowed(u.email))return send(res,429,{error:'Högst 20 bilder per timme.'});
+      return send(res,201,{image:await storeImage(u.email,bytes)});
+    }
+    if(pathname==='/api/images/import' && req.method==='POST') {
+      const data=await body(req);
+      if(!uploadAllowed(u.email))return send(res,429,{error:'Högst 20 bilder per timme.'});
+      const bytes=await fetchPublicImage(data.url);
+      return send(res,201,{image:await storeImage(u.email,bytes)});
+    }
     if (pathname === '/api/invitations' && req.method==='GET') {
       if (u.role!=='admin') return send(res,403,{error:'Endast administratören kan visa inbjudningar.'});
       return send(res,200,{invitations:state.invitations.map(({tokenHash,...rest})=>rest),members:state.users.map(userView)});
@@ -215,8 +337,12 @@ const server = http.createServer(async (req,res) => {
     }
     if (pathname === '/api/posts' && req.method==='POST') {
       const data=await body(req);const text=String(data.text||'').trim();
-      if (!text || text.length>5000) return send(res,400,{error:'Inlägget måste vara 1–5000 tecken.'});
-      const post={id:crypto.randomUUID(),author:u.firstName,email:u.email,text,createdAt:new Date().toISOString(),comments:[]};
+      const images=Array.isArray(data.images)?data.images:[];
+      if(!text && !images.length)return send(res,400,{error:'Skriv text eller bifoga minst en bild.'});
+      if(text.length>5000 || images.length>MAX_IMAGES_POST || images.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id)) || new Set(images).size!==images.length)
+        return send(res,400,{error:'Felaktiga bildval (högst tre).'});
+      for(const id of images){const img=await imageMeta(id);if(!img||img.owner!==u.email)return send(res,403,{error:'En bild saknas eller tillhör en annan medlem.'});}
+      const post={id:crypto.randomUUID(),author:u.firstName,email:u.email,text,images,createdAt:new Date().toISOString(),comments:[]};
       state.posts.unshift(post);await persist();return send(res,201,{post});
     }
     // Inlägg: endast upphovspersonen får ändra eller radera.
@@ -228,12 +354,13 @@ const server = http.createServer(async (req,res) => {
       if (req.method==='DELETE') {
         state.posts=state.posts.filter(p=>p.id!==post.id);
         await persist();
+        await removeImages(Array.isArray(post.images)?post.images:[]);
         return send(res,200,{ok:true});
       }
       const data=await body(req);
       if (typeof data.text!=='string') return send(res,400,{error:'Text saknas.'});
       const text=data.text.trim();
-      if (!text || text.length>5000) return send(res,400,{error:'Inlägget måste vara 1–5000 tecken.'});
+      if((!text && !(post.images||[]).length) || text.length>5000)return send(res,400,{error:'Skriv text eller bifoga en bild.'});
       post.text=text;
       post.editedAt=new Date().toISOString();
       await persist();
@@ -261,4 +388,4 @@ const server = http.createServer(async (req,res) => {
     return send(res,404,{error:'Adressen finns inte.'});
   } catch(e) { console.error(e); return send(res,400,{error:'Begäran kunde inte behandlas.'}); }
 });
-initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.8 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
+initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.9 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
