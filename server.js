@@ -82,7 +82,7 @@ const server = http.createServer(async (req,res) => {
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       return fs.createReadStream(path.join(__dirname,'index.html')).pipe(res);
     }
-    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.7',requiresSetupSecret:!!process.env.SETUP_SECRET});
+    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.8',requiresSetupSecret:!!process.env.SETUP_SECRET});
     if (pathname === '/api/setup' && req.method==='POST') {
       if (state.users.length) return send(res,409,{error:'Administratören är redan skapad.'});
       const data = await body(req); const pw = data.password;
@@ -206,7 +206,7 @@ const server = http.createServer(async (req,res) => {
       const link=`${proto}://${host}/?invite=${token}`;
       return send(res,201,{invitation:{id:inv.id,status:inv.status,expiresAt:inv.expiresAt},link});
     }
-    if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,posts:state.posts});
+    if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,posts:state.posts.map(p=>({...p,likes:undefined,likeCount:Array.isArray(p.likes)?p.likes.length:0,likedByMe:Array.isArray(p.likes)&&p.likes.includes(u.email)}))});
     if (pathname === '/api/association' && req.method==='POST') {
       if (u.role!=='admin') return send(res,403,{error:'Endast administratören kan ändra namnet.'});
       const data=await body(req); const name=String(data.name||'').trim();
@@ -219,6 +219,37 @@ const server = http.createServer(async (req,res) => {
       const post={id:crypto.randomUUID(),author:u.firstName,email:u.email,text,createdAt:new Date().toISOString(),comments:[]};
       state.posts.unshift(post);await persist();return send(res,201,{post});
     }
+    // Inlägg: endast upphovspersonen får ändra eller radera.
+    const postRoute = pathname.match(/^\/api\/posts\/([a-f0-9-]+)$/);
+    if (postRoute && (req.method==='PATCH' || req.method==='DELETE')) {
+      const post=state.posts.find(p=>p.id===postRoute[1]);
+      if (!post) return send(res,404,{error:'Inlägget hittades inte.'});
+      if (post.email!==u.email) return send(res,403,{error:'Du kan bara ändra dina egna inlägg.'});
+      if (req.method==='DELETE') {
+        state.posts=state.posts.filter(p=>p.id!==post.id);
+        await persist();
+        return send(res,200,{ok:true});
+      }
+      const data=await body(req);
+      if (typeof data.text!=='string') return send(res,400,{error:'Text saknas.'});
+      const text=data.text.trim();
+      if (!text || text.length>5000) return send(res,400,{error:'Inlägget måste vara 1–5000 tecken.'});
+      post.text=text;
+      post.editedAt=new Date().toISOString();
+      await persist();
+      return send(res,200,{ok:true});
+    }
+    // Ett gilla per användare. Samma knapp tar bort gillamarkeringen.
+    const likeRoute = pathname.match(/^\/api\/posts\/([a-f0-9-]+)\/like$/);
+    if (likeRoute && req.method==='POST') {
+      const post=state.posts.find(p=>p.id===likeRoute[1]);
+      if (!post) return send(res,404,{error:'Inlägget hittades inte.'});
+      if (!Array.isArray(post.likes)) post.likes=[];
+      if (post.likes.includes(u.email)) post.likes=post.likes.filter(email=>email!==u.email);
+      else post.likes.push(u.email);
+      await persist();
+      return send(res,200,{liked:post.likes.includes(u.email),count:post.likes.length});
+    }
     const cm=pathname.match(/^\/api\/posts\/([a-f0-9-]+)\/comments$/);
     if (cm && req.method==='POST') {
       const post=state.posts.find(p=>p.id===cm[1]);
@@ -230,4 +261,4 @@ const server = http.createServer(async (req,res) => {
     return send(res,404,{error:'Adressen finns inte.'});
   } catch(e) { console.error(e); return send(res,400,{error:'Begäran kunde inte behandlas.'}); }
 });
-initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.7 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
+initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.8 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
