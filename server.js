@@ -82,7 +82,7 @@ const server = http.createServer(async (req,res) => {
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       return fs.createReadStream(path.join(__dirname,'index.html')).pipe(res);
     }
-    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.6',requiresSetupSecret:!!process.env.SETUP_SECRET});
+    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.7',requiresSetupSecret:!!process.env.SETUP_SECRET});
     if (pathname === '/api/setup' && req.method==='POST') {
       if (state.users.length) return send(res,409,{error:'Administratören är redan skapad.'});
       const data = await body(req); const pw = data.password;
@@ -135,6 +135,67 @@ const server = http.createServer(async (req,res) => {
       if (u.role!=='admin') return send(res,403,{error:'Endast administratören kan visa inbjudningar.'});
       return send(res,200,{invitations:state.invitations.map(({tokenHash,...rest})=>rest),members:state.users.map(userView)});
     }
+    // Resend: bara administratören får skicka. Adressen används för leverans,
+    // men registreras INTE som medlem eller i Lillachattens databas.
+    if (pathname === '/api/invitations/send' && req.method === 'POST') {
+      if (u.role !== 'admin') return send(res, 403, {error:'Endast administratören kan bjuda in.'});
+      const data = await body(req);
+      const recipient = String(data.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient) || recipient.length > 254)
+        return send(res,400,{error:'Ange en giltig mottagaradress.'});
+      if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM)
+        return send(res,503,{error:'E-post är inte konfigurerad i Render (RESEND_API_KEY och RESEND_FROM).'});
+      const now = Date.now();
+      // Skydd mot oavsiktligt massutskick: max 10 per timme per administratör.
+      globalThis.lcInviteSends ||= new Map();
+      const recent = (globalThis.lcInviteSends.get(u.email) || []).filter(t => now-t < 3600000);
+      if (recent.length >= 10) return send(res,429,{error:'Högst 10 inbjudningar per timme. Försök senare.'});
+      const base = (process.env.PUBLIC_URL || 'https://lillachatten.onrender.com').replace(/\/$/, '');
+      if (!/^https:\/\/[^/]+$/.test(base) && !/^http:\/\/127\.0\.0\.1:\d+$/.test(base))
+        return send(res,503,{error:'PUBLIC_URL är felaktigt inställd.'});
+      const token = crypto.randomBytes(32).toString('hex');
+      const link = `${base}/?invite=${token}`;
+      const group = state.association || 'Lillachatten';
+      const escapeHtml = v => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const safeGroup = escapeHtml(group);
+      const safeLink = escapeHtml(link);
+      const html = `<div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;color:#263445">
+        <h2>Inbjudan till ${safeGroup}</h2>
+        <p>Du har blivit inbjuden att gå med i ${safeGroup} på Lillachatten.</p>
+        <p><a href="${safeLink}" style="display:inline-block;padding:13px 20px;background:#2865b0;color:#fff;text-decoration:none;border-radius:9px">Visa inbjudan</a></p>
+        <p>Du kan tacka ja eller nej på sidan. Länken gäller i sju dagar.</p>
+        <p style="font-size:12px;color:#667486">Om du inte väntade dig detta mejl behöver du inte göra någonting.</p></div>`;
+      let response;
+      try {
+        response = await fetch('https://api.resend.com/emails', {
+          method:'POST',
+          headers:{'Authorization':`Bearer ${process.env.RESEND_API_KEY}`,
+                   'Content-Type':'application/json',
+                   'User-Agent':'Lillachatten/0.7',
+                   'Idempotency-Key':`lillachatten/${tokenHash(token)}`},
+          body:JSON.stringify({from:process.env.RESEND_FROM,to:[recipient],
+                               subject:`Inbjudan till ${group}`,html}),
+          signal:AbortSignal.timeout(15000)
+        });
+      } catch (err) {
+        console.error('Resend kunde inte nås:',err.name);
+        return send(res,502,{error:'E-posttjänsten kunde inte nås. Ingen inbjudan sparades.'});
+      }
+      if (!response.ok) {
+        // Ta inte med API-nyckeln eller hela Resends svar i loggarna.
+        console.error('Resend nekade utskicket, HTTP',response.status);
+        return send(res,502,{error: response.status===403
+          ? 'Resend nekade utskicket. Kontrollera verifierad avsändardomän och RESEND_FROM.'
+          : `Resend kunde inte skicka mejlet (HTTP ${response.status}).`});
+      }
+      const inv = {id:crypto.randomUUID(),status:'pending',
+        createdAt:new Date().toISOString(),
+        expiresAt:new Date(now+7*86400000).toISOString(),tokenHash:tokenHash(token)};
+      state.invitations.unshift(inv);
+      await persist();
+      globalThis.lcInviteSends.set(u.email, [...recent,now]);
+      return send(res,201,{ok:true,invitation:{id:inv.id,status:inv.status,expiresAt:inv.expiresAt}});
+    }
     if (pathname === '/api/invitations' && req.method==='POST') {
       if (u.role!=='admin') return send(res,403,{error:'Endast administratören kan bjuda in.'});
             const token=crypto.randomBytes(32).toString('hex');
@@ -169,4 +230,4 @@ const server = http.createServer(async (req,res) => {
     return send(res,404,{error:'Adressen finns inte.'});
   } catch(e) { console.error(e); return send(res,400,{error:'Begäran kunde inte behandlas.'}); }
 });
-initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.6 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
+initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.7 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
