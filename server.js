@@ -172,7 +172,7 @@ const server = http.createServer(async (req,res) => {
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       return fs.createReadStream(path.join(__dirname,'index.html')).pipe(res);
     }
-    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9',requiresSetupSecret:!!process.env.SETUP_SECRET});
+    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9.1',requiresSetupSecret:!!process.env.SETUP_SECRET});
     if (pathname === '/api/setup' && req.method==='POST') {
       if (state.users.length) return send(res,409,{error:'Administratören är redan skapad.'});
       const data = await body(req); const pw = data.password;
@@ -328,7 +328,15 @@ const server = http.createServer(async (req,res) => {
       const link=`${proto}://${host}/?invite=${token}`;
       return send(res,201,{invitation:{id:inv.id,status:inv.status,expiresAt:inv.expiresAt},link});
     }
-    if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,posts:state.posts.map(p=>({...p,likes:undefined,likeCount:Array.isArray(p.likes)?p.likes.length:0,likedByMe:Array.isArray(p.likes)&&p.likes.includes(u.email)}))});
+    if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,posts:state.posts.map(p=>{
+      // Tidigare Gilla-markeringar blir hjärtan, utan att ändra databasen.
+      const reactions=p.reactions||{};
+      const members=t=>Array.isArray(reactions[t])?reactions[t]:(t==='heart'&&Array.isArray(p.likes)?p.likes:[]);
+      const types=['up','down','heart'];
+      return {...p,likes:undefined,reactions:undefined,
+        reactionCounts:Object.fromEntries(types.map(t=>[t,members(t).length])),
+        myReactions:Object.fromEntries(types.map(t=>[t,members(t).includes(u.email)]))};
+    })});
     if (pathname === '/api/association' && req.method==='POST') {
       if (u.role!=='admin') return send(res,403,{error:'Endast administratören kan ändra namnet.'});
       const data=await body(req); const name=String(data.name||'').trim();
@@ -366,6 +374,34 @@ const server = http.createServer(async (req,res) => {
       await persist();
       return send(res,200,{ok:true});
     }
+    // En reaktion per medlem och typ. Tumme upp och ner utesluter varandra.
+    const reactionRoute=pathname.match(/^\/api\/posts\/([a-f0-9-]+)\/reaction$/);
+    if (reactionRoute && req.method==='POST') {
+      const post=state.posts.find(p=>p.id===reactionRoute[1]);
+      if (!post) return send(res,404,{error:'Inlägget hittades inte.'});
+      const data=await body(req);
+      const type=data.type;
+      if (!['up','down','heart'].includes(type)) return send(res,400,{error:'Okänd reaktion.'});
+      if (!post.reactions) post.reactions={
+        up:[],down:[],heart:Array.isArray(post.likes)?[...post.likes]:[]
+      };
+      for (const t of ['up','down','heart']) {
+        if (!Array.isArray(post.reactions[t])) post.reactions[t]=[];
+      }
+      const existing=post.reactions[type].includes(u.email);
+      post.reactions[type]=post.reactions[type].filter(email=>email!==u.email);
+      if (!existing) {
+        if (type==='up' || type==='down') {
+          const opposite=type==='up'?'down':'up';
+          post.reactions[opposite]=post.reactions[opposite].filter(email=>email!==u.email);
+        }
+        post.reactions[type].push(u.email);
+      }
+      // Den gamla listan används inte efter migrering.
+      delete post.likes;
+      await persist();
+      return send(res,200,{ok:true});
+    }
     // Ett gilla per användare. Samma knapp tar bort gillamarkeringen.
     const likeRoute = pathname.match(/^\/api\/posts\/([a-f0-9-]+)\/like$/);
     if (likeRoute && req.method==='POST') {
@@ -388,4 +424,4 @@ const server = http.createServer(async (req,res) => {
     return send(res,404,{error:'Adressen finns inte.'});
   } catch(e) { console.error(e); return send(res,400,{error:'Begäran kunde inte behandlas.'}); }
 });
-initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.9 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
+initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.9.1 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});

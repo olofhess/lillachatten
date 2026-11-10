@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lillachatten 0.9</title>
+<title>Lillachatten 0.9.1</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#263445;background:#f4f6f9}*{box-sizing:border-box}body{margin:0}header{background:#fff;border-bottom:1px solid #e1e5ec}.head,main{max-width:720px;margin:auto;padding:20px}.head{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:750;font-size:1.3rem;color:#2458a6}.muted{color:#667486;font-size:.89rem}h1{font-size:1.5rem}h2{font-size:1.05rem}section,article{background:#fff;border:1px solid #e3e7ef;border-radius:13px;padding:20px;margin-bottom:15px;box-shadow:0 1px 3px #172c4410}label{display:block;font-weight:650;margin:12px 0 6px}input,textarea{display:block;width:100%;border:1px solid #cbd3df;border-radius:9px;padding:11px 12px;font:inherit;color:#263445;background:white}textarea{min-height:100px;resize:vertical}button{background:#2865b0;color:white;border:0;border-radius:9px;padding:10px 16px;font:inherit;font-weight:650;cursor:pointer;margin-top:12px}button:hover{background:#1e4f90}.secondary{background:#e9eff7;color:#2458a6}.secondary:hover{background:#dce7f5}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row input{flex:1;min-width:160px}.row button{margin-top:0}.small{font-size:.8rem;color:#748093}.author{font-weight:750}.body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-top:12px}.comment{background:#f5f7fa;border-radius:8px;padding:10px;margin-top:8px;overflow-wrap:anywhere}.comments{border-top:1px solid #e8edf3;margin-top:16px;padding-top:10px}.error{color:#b42318;margin-top:10px}.hidden{display:none!important}.cardTitle{margin:0 0 15px}#sessionName{font-size:.9rem;color:#667486}footer{text-align:center;padding:20px;color:#8a96a6;font-size:.8rem}@media(max-width:500px){.head,main{padding:15px}section,article{padding:16px}}
 
@@ -60,6 +60,16 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 .postImages{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .postImages img{max-width:100%;max-height:320px;object-fit:contain;border-radius:8px;cursor:zoom-in}
 @media(min-width:520px){.postImages img{max-width:48%}}
+
+/* Lillachatten 0.9.1 – små symbolknappar, tydliga räknare */
+.postActions{gap:6px}
+.postActions .reactionButton,.postActions .iconButton{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:36px;height:34px;padding:5px 7px;background:transparent;color:#52677d;border:1px solid #d5dce5;border-radius:8px;cursor:pointer}
+.postActions .reactionButton svg,.postActions .iconButton svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.postActions .reactionButton.selected{color:#245fa7;border-color:#a6bee1;background:#eef5ff}
+.postActions .reactionButton.heartReaction.selected{color:#b42345;border-color:#e8a4b4;background:#fff6f8}
+.postActions .reactionCount{font-size:.76rem;font-weight:650;min-width:7px;text-align:center}
+.postActions .iconButton{margin-left:2px}
+.postActions .reactionButton:hover,.postActions .iconButton:hover{background:#edf2f7}
 </style></head><body>
 <header><div class="head"><div><div class="brand">Lillachatten</div><div class="muted">Ett eget rum för gemenskap</div></div><div class="row"><span id="sessionName"></span><button id="logoutBtn" class="secondary hidden" type="button">Logga ut</button></div></div></header>
 <main>
@@ -81,7 +91,7 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 </div><button id="publishBtn">Publicera</button></form></section>
 <h2>Inlägg</h2><div id="feed"></div></div>
 <p id="message" role="status"></p>
-<footer>Lillachatten 0.9 · Bilder och inbjudningar via Resend</footer>
+<footer>Lillachatten 0.9.1 · Bilder och inbjudningar via Resend</footer>
 </main>
 <script>
 (()=>{'use strict';const $=id=>document.getElementById(id);let me=null;let posts=[];const inviteToken=new URLSearchParams(location.search).get('invite');
@@ -102,13 +112,25 @@ if(Array.isArray(p.images)&&p.images.length){
   a.append(gallery);
 }
 const tools=element('div','postActions');
-const likeCount=Number(p.likeCount)||0;
-const liked=!!p.likedByMe;
-const heart=element('button','likeButton'+(liked?' liked':''),(liked?'♥':'♡')+' Gilla'+(likeCount?' · '+likeCount:''));heart.type='button';
-heart.setAttribute('aria-pressed',String(!!liked));heart.addEventListener('click',async()=>{heart.disabled=true;try{await api('/api/posts/'+p.id+'/like','POST',{});await load();msg('')}catch(e){heart.disabled=false;msg(e.message,true)}});tools.append(heart);
+const glyphs={
+ up:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v11H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3Zm0 0 5-8a2 2 0 0 1 2 2v4h5a3 3 0 0 1 3 3l-1.5 8a3 3 0 0 1-3 2H7"/></svg>',
+ down:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14V3H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3Zm0 0 5 8a2 2 0 0 0 2-2v-4h5a3 3 0 0 0 3-3l-1.5-8a3 3 0 0 0-3-2H7"/></svg>',
+ heart:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>'
+};
+const counts=p.reactionCounts||{},mine=p.myReactions||{};
+for(const type of ['up','down','heart']) {
+ const titles={up:'Tumme upp',down:'Tumme ner',heart:'Hjärta'};
+ const active=!!mine[type];
+ const button=element('button','reactionButton'+(active?' selected':'')+(type==='heart'?' heartReaction':''));
+ button.type='button';button.title=titles[type];button.setAttribute('aria-label',titles[type]+', '+(counts[type]||0));
+ button.setAttribute('aria-pressed',String(active));
+ button.innerHTML=glyphs[type]+'<span class="reactionCount">'+(Number(counts[type])||0)+'</span>';
+ button.addEventListener('click',async()=>{button.disabled=true;try{await api('/api/posts/'+p.id+'/reaction','POST',{type});await load();msg('')}catch(e){button.disabled=false;msg(e.message,true)}});
+ tools.append(button);
+}
 if(me&&p.email===me.email){
- const edit=element('button','quietButton','Redigera');edit.type='button';
- const del=element('button','quietButton','Ta bort');del.type='button';
+ const edit=element('button','quietButton iconButton');edit.type='button';edit.title='Redigera';edit.setAttribute('aria-label','Redigera inlägg');edit.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4Z"/></svg>';
+ const del=element('button','quietButton iconButton');del.type='button';del.title='Ta bort';del.setAttribute('aria-label','Ta bort inlägg');del.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-1 15H6L5 6M10 10v7m4-7v7"/></svg>';
  edit.addEventListener('click',()=>{
    if(a.querySelector('.editPostForm'))return;
    const form=element('form','editPostForm');const field=element('textarea');field.value=p.text;field.maxLength=5000;field.required=true;field.setAttribute('aria-label','Redigera inlägg');
