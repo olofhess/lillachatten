@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lillachatten 0.9.2</title>
+<title>Lillachatten 0.9.3</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#263445;background:#f4f6f9}*{box-sizing:border-box}body{margin:0}header{background:#fff;border-bottom:1px solid #e1e5ec}.head,main{max-width:720px;margin:auto;padding:20px}.head{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:750;font-size:1.3rem;color:#2458a6}.muted{color:#667486;font-size:.89rem}h1{font-size:1.5rem}h2{font-size:1.05rem}section,article{background:#fff;border:1px solid #e3e7ef;border-radius:13px;padding:20px;margin-bottom:15px;box-shadow:0 1px 3px #172c4410}label{display:block;font-weight:650;margin:12px 0 6px}input,textarea{display:block;width:100%;border:1px solid #cbd3df;border-radius:9px;padding:11px 12px;font:inherit;color:#263445;background:white}textarea{min-height:100px;resize:vertical}button{background:#2865b0;color:white;border:0;border-radius:9px;padding:10px 16px;font:inherit;font-weight:650;cursor:pointer;margin-top:12px}button:hover{background:#1e4f90}.secondary{background:#e9eff7;color:#2458a6}.secondary:hover{background:#dce7f5}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row input{flex:1;min-width:160px}.row button{margin-top:0}.small{font-size:.8rem;color:#748093}.author{font-weight:750}.body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-top:12px}.comment{background:#f5f7fa;border-radius:8px;padding:10px;margin-top:8px;overflow-wrap:anywhere}.comments{border-top:1px solid #e8edf3;margin-top:16px;padding-top:10px}.error{color:#b42318;margin-top:10px}.hidden{display:none!important}.cardTitle{margin:0 0 15px}#sessionName{font-size:.9rem;color:#667486}footer{text-align:center;padding:20px;color:#8a96a6;font-size:.8rem}@media(max-width:500px){.head,main{padding:15px}section,article{padding:16px}}
 
@@ -80,6 +80,24 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 .imageChooser{border:1px dashed #b5c4d7}
 .imageChooser.dragover{background:#eaf3ff;border-color:#2865b0}
 @media(max-width:500px){.pictureMainButton{width:auto}.pictureOption{flex:1}.pictureOptions{gap:6px}}
+/* 0.9.3: ta bort en publicerad bild (endast ägaren). */
+.postImages .postImageWrap{position:relative;display:inline-flex;max-width:100%;align-items:flex-start}
+.postImages .postImageWrap img{max-width:100%;height:auto;max-height:320px;object-fit:contain}
+.postImages .postImageRemove{position:absolute;right:6px;top:6px;margin:0;min-width:34px;min-height:34px;padding:7px;background:rgba(29,37,49,.88);border:1px solid #fff7;border-radius:8px;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.postImages .postImageRemove svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.postImages .postImageRemove:hover{background:#9f2439}
+@media(min-width:520px){.postImages .postImageWrap{max-width:48%}}
+/* 0.9.3: medlemmarnas egna profilbilder */
+.profileEditor{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.profileControls{display:flex;flex-wrap:wrap;gap:6px}
+.profileControls button{margin:0;padding:8px 10px;font-size:.85rem}
+.avatar{display:inline-flex;width:30px;height:30px;border-radius:50%;background:#e4ebf6;color:#2458a6;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;overflow:hidden;vertical-align:middle}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.avatarLarge{width:64px;height:64px;font-size:1.4rem}
+.memberDirectory{display:flex;gap:10px;flex-wrap:wrap}
+.memberCard{display:inline-flex;align-items:center;gap:6px;font-size:.9rem}
+.postAuthor{display:inline-flex;align-items:center;gap:6px;vertical-align:middle}
+.comment .avatar{width:24px;height:24px;font-size:.72rem;margin-right:5px}
 </style></head><body>
 <header><div class="head"><div><div class="brand">Lillachatten</div><div class="muted">Ett eget rum för gemenskap</div></div><div class="row"><span id="sessionName"></span><button id="logoutBtn" class="secondary hidden" type="button">Logga ut</button></div></div></header>
 <main>
@@ -91,6 +109,15 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 <div id="appPanel" class="hidden"><h1 id="associationHeading">Välkommen</h1><p class="muted">Ett gemensamt flöde för föreningens medlemmar.</p>
 <section id="associationPanel"><h2 class="cardTitle">Föreningens namn</h2><form id="associationForm" class="row"><input id="associationName" placeholder="Till exempel Familjen Andersson" maxlength="80" required aria-label="Föreningens namn"><button>Spara namn</button></form></section>
 <section id="inviteAdminPanel" class="hidden"><h2 class="cardTitle">Bjud in medlem</h2><p class="muted">Ange mottagarens e-postadress. Resend skickar inbjudan direkt. Adressen sparas inte i medlemsregistret.</p><form id="inviteForm"><div class="row"><input id="inviteEmail" type="email" placeholder="Mottagarens e-postadress" aria-label="Mottagarens e-postadress" required><button id="sendInviteBtn">Skicka inbjudan</button></div></form><div id="invitationResult" class="hidden"></div><h2 class="cardTitle" style="margin-top:12px">Inbjudningar</h2><div id="invitationsList"></div><h2 class="cardTitle" style="margin-top:12px">Medlemmar</h2><div id="membersList"></div></section>
+<section id="profilePanel"><h2 class="cardTitle">Min profilbild</h2>
+<div class="profileEditor"><span id="myAvatar" class="avatar avatarLarge" aria-hidden="true"></span>
+<div class="profileControls"><button id="selectAvatarButton" type="button" class="secondary">Välj foto</button>
+<button id="cameraAvatarButton" type="button" class="secondary">Ta foto</button>
+<button id="removeAvatarButton" type="button" class="quietButton">Ta bort foto</button></div></div>
+<input type="file" id="avatarFileInput" accept="image/*" style="display:none">
+<input type="file" id="avatarCameraInput" accept="image/*" capture="environment" style="display:none">
+</section>
+<section id="directoryPanel"><h2 class="cardTitle">Medlemmar</h2><div id="memberDirectory" class="memberDirectory"></div></section>
 <section><h2 class="cardTitle">Skriv ett inlägg</h2><p class="small">Inlägget publiceras med ditt förnamn automatiskt.</p><form id="postForm"><label for="postText">Vad vill du berätta?</label><textarea id="postText" maxlength="5000" placeholder="Skriv något …"></textarea>
 <div id="imageChooser" class="imageChooser">
 <button type="button" id="addPictureButton" class="pictureMainButton" aria-expanded="false" aria-controls="pictureOptions">▧ Lägg till bild</button>
@@ -107,7 +134,7 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 </div><button id="publishBtn">Publicera</button></form></section>
 <h2>Inlägg</h2><div id="feed"></div></div>
 <p id="message" role="status"></p>
-<footer>Lillachatten 0.9.2 · Bilder och inbjudningar via Resend</footer>
+<footer>Lillachatten 0.9.3 · Bilder och inbjudningar via Resend</footer>
 </main>
 <script>
 (()=>{'use strict';const $=id=>document.getElementById(id);let me=null;let posts=[];const inviteToken=new URLSearchParams(location.search).get('invite');
@@ -115,16 +142,50 @@ function show(el,yes){$(el).classList.toggle('hidden',!yes)}
 function msg(text,isError=false){$('message').textContent=text;$('message').className=isError?'error':'muted'}
 async function api(path,method='GET',data){const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),credentials:'same-origin'});let v;try{v=await r.json()}catch{throw Error('Servern svarade inte korrekt.')}if(!r.ok){if(r.status===404&&v.error==='Adressen finns inte.')throw Error('Den gamla serverversionen körs. Stoppa med Ctrl+C och starta om Lillachatten 0.6 med npm start.');throw Error(v.error||'Något gick fel')}return v}
 function element(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+function avatarOf(user,large=false){
+ const av=element('span','avatar'+(large?' avatarLarge':''));
+ if(user&&user.avatarId){const im=element('img');im.src='/api/images/'+user.avatarId;im.alt='';im.loading='lazy';av.append(im)}
+ else av.textContent=(user?.firstName||'?').trim().slice(0,1).toUpperCase();
+ return av;
+}
+let members=[];
+function findMember(email){return members.find(x=>x.email===email)||null}
+function showProfile(){
+ const self=findMember(me.email)||me;
+ const dest=$('myAvatar');dest.replaceChildren();
+ const avatar=avatarOf(self,true);while(avatar.firstChild)dest.append(avatar.firstChild);
+ if(!self.avatarId)dest.textContent=self.firstName.slice(0,1).toUpperCase();
+ $('removeAvatarButton').disabled=!self.avatarId;
+ const directory=$('memberDirectory');directory.replaceChildren();
+ for(const member of members){const line=element('div','memberCard');line.append(avatarOf(member),element('span','',member.firstName));directory.append(line)}
+}
 function render(){const f=$('feed');f.replaceChildren();if(!posts.length){f.append(element('section','muted','Här finns ännu inga inlägg.'));return}
 for(const p of posts){const a=element('article');const d=new Date(p.createdAt).toLocaleString('sv-SE',{dateStyle:'medium',timeStyle:'short'});
-a.append(element('span','author',p.author),document.createTextNode(' · '+d));
+const who=element('span','postAuthor');who.append(avatarOf(findMember(p.email)||{firstName:p.author}),element('span','author',p.author));
+a.append(who,document.createTextNode(' · '+d));
 if(p.editedAt)a.append(element('span','small',' · redigerat'));
 const content=element('div','body',p.text);a.append(content);
 if(Array.isArray(p.images)&&p.images.length){
   const gallery=element('div','postImages');
-  for(const id of p.images){const img=element('img');img.src='/api/images/'+id;img.alt='Bild i inlägg';img.loading='lazy';
+  for(const id of p.images){
+    const wrap=element('div','postImageWrap');
+    const img=element('img');img.src='/api/images/'+id;img.alt='Bild i inlägg';img.loading='lazy';
     img.addEventListener('click',()=>window.open(img.src,'_blank','noopener'));
-    gallery.append(img);}
+    wrap.append(img);
+    if(me&&p.email===me.email){
+      const remove=element('button','postImageRemove');remove.type='button';
+      remove.title='Ta bort bild';remove.setAttribute('aria-label','Ta bort denna bild');
+      remove.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-1 15H6L5 6M10 10v7m4-7v7"/></svg>';
+      remove.addEventListener('click',async()=>{
+        if(!confirm('Ta bort den här bilden permanent?'))return;
+        remove.disabled=true;
+        try{await api('/api/posts/'+p.id+'/images/'+id,'DELETE');await load();msg('Bilden borttagen.');}
+        catch(e){remove.disabled=false;msg(e.message,true)}
+      });
+      wrap.append(remove);
+    }
+    gallery.append(wrap);
+  }
   a.append(gallery);
 }
 const tools=element('div','postActions');
@@ -159,11 +220,11 @@ if(me&&p.email===me.email){
  tools.append(edit,del);
 }
 a.append(tools);
-const c=element('div','comments');for(const v of p.comments||[]){const item=element('div','comment');item.append(element('strong','',v.author+': '),document.createTextNode(v.text));c.append(item)}
+const c=element('div','comments');for(const v of p.comments||[]){const item=element('div','comment');item.append(avatarOf(findMember(v.email)||{firstName:v.author}),element('strong','',v.author+': '),document.createTextNode(v.text));c.append(item)}
 const form=element('form','row');const input=element('input');input.placeholder='Skriv en kommentar …';input.maxLength=1000;input.required=true;const b=element('button','','Kommentera');form.append(input,b);form.addEventListener('submit',async ev=>{ev.preventDefault();try{await api('/api/posts/'+p.id+'/comments','POST',{text:input.value.trim()});await load();msg('Kommentar publicerad.')}catch(e){msg(e.message,true)}});c.append(form);a.append(c);f.append(a)}}
-async function load(){const v=await api('/api/me');me=v.user;posts=v.posts;$('sessionName').textContent=me.firstName+' ('+(me.role==='admin'?'administratör':'medlem')+')';$('associationHeading').textContent=v.association||'Välkommen, '+me.firstName;$('associationName').value=v.association;show('authPanel',false);show('appPanel',true);show('logoutBtn',true);show('associationPanel',me.role==='admin');show('inviteAdminPanel',me.role==='admin');if(me.role==='admin')await loadInvitations();render()}
+async function load(){const v=await api('/api/me');me=v.user;posts=v.posts;members=v.members||[];$('sessionName').textContent=me.firstName+' ('+(me.role==='admin'?'administratör':'medlem')+')';$('associationHeading').textContent=v.association||'Välkommen, '+me.firstName;$('associationName').value=v.association;show('authPanel',false);show('appPanel',true);show('logoutBtn',true);show('associationPanel',me.role==='admin');show('inviteAdminPanel',me.role==='admin');if(me.role==='admin')await loadInvitations();showProfile();render()}
 async function start(){if(inviteToken){await showInvitation();return}try{await load()}catch(e){if(!e.message.includes('Logga in först')){msg(e.message,true);return}const s=await api('/api/status');show('authPanel',true);show('appPanel',false);show('logoutBtn',false);show('setupPanel',s.needsSetup);show('setupSecretBox',s.requiresSetupSecret);show('loginPanel',!s.needsSetup)}}
-async function loadInvitations(){const v=await api('/api/invitations');const list=$('invitationsList');list.replaceChildren();for(const item of v.invitations){list.append(element('div','','Inbjudan '+new Date(item.createdAt).toLocaleDateString('sv-SE')+' — '+({pending:'Väntar',accepted:'Accepterad',declined:'Avböjd',replaced:'Ersatt'}[item.status]||item.status)))}if(!v.invitations.length)list.append(element('div','muted','Inga inbjudningar.'));const ml=$('membersList');ml.replaceChildren();for(const member of v.members)ml.append(element('div','',member.firstName+' · '+member.email));}
+async function loadInvitations(){const v=await api('/api/invitations');const list=$('invitationsList');list.replaceChildren();for(const item of v.invitations){list.append(element('div','','Inbjudan '+new Date(item.createdAt).toLocaleDateString('sv-SE')+' — '+({pending:'Väntar',accepted:'Accepterad',declined:'Avböjd',replaced:'Ersatt'}[item.status]||item.status)))}if(!v.invitations.length)list.append(element('div','muted','Inga inbjudningar.'));const ml=$('membersList');ml.replaceChildren();for(const member of v.members){const line=element('div','memberCard');line.append(avatarOf(member),element('span','',member.firstName+' · '+member.email));ml.append(line)}}
 async function showInvitation(){show('authPanel',false);show('appPanel',false);show('logoutBtn',false);show('invitePanel',true);try{const v=await api('/api/invitations/inspect?token='+encodeURIComponent(inviteToken));$('inviteDetails').textContent='Du är inbjuden till '+v.association+'. Välj om du vill gå med.';}catch(e){show('inviteChoices',false);$('inviteDetails').textContent=e.message;}}
 $('acceptInviteBtn').addEventListener('click',()=>{show('inviteChoices',false);show('acceptInviteForm',true)});
 $('declineInviteBtn').addEventListener('click',async()=>{try{await api('/api/invitations/respond','POST',{token:inviteToken,decision:'decline'});show('inviteChoices',false);$('inviteDetails').textContent='Du har avböjt inbjudan.';msg('');}catch(e){msg(e.message,true)}});
@@ -179,6 +240,35 @@ $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const pw=$
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/login','POST',{email:$('loginEmail').value,password:$('loginPassword').value});$('loginPassword').value='';msg('');await load()}catch(err){msg(err.message,true)}});
 $('logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout','POST');me=null;msg('Du är utloggad.');await start()}catch(err){msg(err.message,true)}});
 $('associationForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/association','POST',{name:$('associationName').value.trim()});await load();msg('Namnet har sparats.')}catch(err){msg(err.message,true)}});
+async function uploadAvatar(file){
+ if(!file)return;
+ if(!file.type.startsWith('image/'))throw Error('Välj en bildfil.');
+ const bitmap=await createImageBitmap(file);
+ const edge=512,ratio=Math.min(1,edge/Math.max(bitmap.width,bitmap.height));
+ const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*ratio));
+ canvas.height=Math.max(1,Math.round(bitmap.height*ratio));
+ canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+ const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.82));
+ if(!blob)throw Error('Fotot kunde inte bearbetas.');
+ const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('Kunde inte läsa fotot.'));reader.readAsDataURL(blob)});
+ const result=await api('/api/images/upload','POST',{base64});
+ try{await api('/api/profile/photo','PATCH',{imageId:result.image.id})}
+ catch(err){try{await api('/api/images/'+result.image.id,'DELETE')}catch{}throw err}
+ await load();msg('Profilfotot är sparat.');
+}
+let avatarBusy=false;
+async function pickAvatar(e){const file=e.target.files?.[0];e.target.value='';if(!file||avatarBusy)return;
+ avatarBusy=true;
+ try{await uploadAvatar(file)}catch(err){msg(err.message,true)}finally{avatarBusy=false}
+}
+$('selectAvatarButton').addEventListener('click',()=>$('avatarFileInput').click());
+$('cameraAvatarButton').addEventListener('click',()=>$('avatarCameraInput').click());
+$('avatarFileInput').addEventListener('change',pickAvatar);
+$('avatarCameraInput').addEventListener('change',pickAvatar);
+$('removeAvatarButton').addEventListener('click',async()=>{
+ if(avatarBusy)return;if(!confirm('Ta bort ditt profilfoto?'))return;
+ avatarBusy=true;try{await api('/api/profile/photo','PATCH',{imageId:null});await load();msg('Profilfotot borttaget.')}catch(err){msg(err.message,true)}finally{avatarBusy=false}
+});
 const draftImages=[];
 let imageBusy=false;
 function renderImages(){const preview=$('imagePreview');preview.replaceChildren();for(const [i,im] of draftImages.entries()){

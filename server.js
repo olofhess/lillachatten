@@ -156,7 +156,7 @@ function session(req) {
   return match && sessions.get(match[1]);
 }
 function requireLogin(req, res) { const user = session(req); if (!user) send(res,401,{error:'Logga in först.'}); return user; }
-function userView(user) { return { email:user.email, firstName:user.firstName, role:user.role }; }
+function userView(user) { return { email:user.email, firstName:user.firstName, role:user.role, avatarId:user.avatarId||null }; }
 function issueSession(res,user) {
   const token = crypto.randomBytes(32).toString('hex'); sessions.set(token,user.email);
   return `lc_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`;
@@ -172,7 +172,7 @@ const server = http.createServer(async (req,res) => {
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       return fs.createReadStream(path.join(__dirname,'index.html')).pipe(res);
     }
-    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9.1',requiresSetupSecret:!!process.env.SETUP_SECRET});
+    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9.3',requiresSetupSecret:!!process.env.SETUP_SECRET});
     if (pathname === '/api/setup' && req.method==='POST') {
       if (state.users.length) return send(res,409,{error:'Administratören är redan skapad.'});
       const data = await body(req); const pw = data.password;
@@ -221,6 +221,25 @@ const server = http.createServer(async (req,res) => {
     }
     const u = currentUser(req);
     if (!u) return send(res,401,{error:'Logga in först.'});
+    // 0.9.3: byt eller ta bort eget profilfoto. Endast bildens ägare kan välja det.
+    if(pathname==='/api/profile/photo' && req.method==='PATCH') {
+      const data=await body(req);
+      const imageId=data.imageId;
+      if(imageId!==null && (typeof imageId!=='string'||!/^[a-f0-9-]{36}$/.test(imageId)))
+        return send(res,400,{error:'Ogiltigt profilfoto.'});
+      if(imageId!==null){
+        const info=await imageMeta(imageId);
+        if(!info||info.owner!==u.email)return send(res,403,{error:'Du kan bara använda dina egna uppladdade bilder.'});
+        if(state.posts.some(p=>(p.images||[]).includes(imageId)))
+          return send(res,409,{error:'Välj en separat bild som profilfoto.'});
+      }
+      const previous=u.avatarId||null;
+      u.avatarId=imageId;
+      await persist();
+      if(previous && previous!==imageId && !state.users.some(x=>x.avatarId===previous)
+        && !state.posts.some(p=>(p.images||[]).includes(previous)))await removeImages([previous]);
+      return send(res,200,{avatarId:u.avatarId});
+    }
     const imageGet=pathname.match(/^\/api\/images\/([a-f0-9-]{36})$/);
     if(imageGet && req.method==='GET') {
       const info=await imageMeta(imageGet[1],true);
@@ -233,7 +252,7 @@ const server = http.createServer(async (req,res) => {
       const info=await imageMeta(imageGet[1]);
       if(!info)return send(res,404,{error:'Bilden hittades inte.'});
       if(info.owner!==u.email)return send(res,403,{error:'Du kan bara ta bort dina egna bilder.'});
-      if(state.posts.some(p=>(p.images||[]).includes(imageGet[1])))
+      if(state.users.some(x=>x.avatarId===imageGet[1]) || state.posts.some(p=>(p.images||[]).includes(imageGet[1])))
         return send(res,409,{error:'Bilden används redan i ett inlägg.'});
       await removeImages([imageGet[1]]);return send(res,200,{ok:true});
     }
@@ -328,7 +347,7 @@ const server = http.createServer(async (req,res) => {
       const link=`${proto}://${host}/?invite=${token}`;
       return send(res,201,{invitation:{id:inv.id,status:inv.status,expiresAt:inv.expiresAt},link});
     }
-    if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,posts:state.posts.map(p=>{
+    if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,members:state.users.map(userView),posts:state.posts.map(p=>{
       // Tidigare Gilla-markeringar blir hjärtan, utan att ändra databasen.
       const reactions=p.reactions||{};
       const members=t=>Array.isArray(reactions[t])?reactions[t]:(t==='heart'&&Array.isArray(p.likes)?p.likes:[]);
@@ -352,6 +371,25 @@ const server = http.createServer(async (req,res) => {
       for(const id of images){const img=await imageMeta(id);if(!img||img.owner!==u.email)return send(res,403,{error:'En bild saknas eller tillhör en annan medlem.'});}
       const post={id:crypto.randomUUID(),author:u.firstName,email:u.email,text,images,createdAt:new Date().toISOString(),comments:[]};
       state.posts.unshift(post);await persist();return send(res,201,{post});
+    }
+    // 0.9.3: radera exakt en publicerad bild, endast från eget inlägg.
+    const postImageRoute=pathname.match(/^\/api\/posts\/([a-f0-9-]+)\/images\/([a-f0-9-]{36})$/);
+    if(postImageRoute && req.method==='DELETE') {
+      const post=state.posts.find(p=>p.id===postImageRoute[1]);
+      if(!post)return send(res,404,{error:'Inlägget hittades inte.'});
+      if(post.email!==u.email)return send(res,403,{error:'Du kan bara ändra dina egna inlägg.'});
+      const imageId=postImageRoute[2];
+      if(!Array.isArray(post.images)||!post.images.includes(imageId))
+        return send(res,404,{error:'Bilden finns inte i inlägget.'});
+      if(post.images.length===1 && !String(post.text||'').trim())
+        return send(res,409,{error:'Ett inlägg måste innehålla text eller minst en bild. Ta bort hela inlägget i stället.'});
+      // Ändra inlägget först så det aldrig pekar på en borttagen bild.
+      post.images=post.images.filter(id=>id!==imageId);
+      post.editedAt=new Date().toISOString();
+      await persist();
+      // Radera filen bara om den inte används i något annat inlägg.
+      if(!state.posts.some(p=>(p.images||[]).includes(imageId)))await removeImages([imageId]);
+      return send(res,200,{ok:true});
     }
     // Inlägg: endast upphovspersonen får ändra eller radera.
     const postRoute = pathname.match(/^\/api\/posts\/([a-f0-9-]+)$/);
@@ -424,4 +462,4 @@ const server = http.createServer(async (req,res) => {
     return send(res,404,{error:'Adressen finns inte.'});
   } catch(e) { console.error(e); return send(res,400,{error:'Begäran kunde inte behandlas.'}); }
 });
-initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.9.1 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
+initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.9.3 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
