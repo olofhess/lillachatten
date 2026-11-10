@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lillachatten 0.9.1</title>
+<title>Lillachatten 0.9.2</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#263445;background:#f4f6f9}*{box-sizing:border-box}body{margin:0}header{background:#fff;border-bottom:1px solid #e1e5ec}.head,main{max-width:720px;margin:auto;padding:20px}.head{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:750;font-size:1.3rem;color:#2458a6}.muted{color:#667486;font-size:.89rem}h1{font-size:1.5rem}h2{font-size:1.05rem}section,article{background:#fff;border:1px solid #e3e7ef;border-radius:13px;padding:20px;margin-bottom:15px;box-shadow:0 1px 3px #172c4410}label{display:block;font-weight:650;margin:12px 0 6px}input,textarea{display:block;width:100%;border:1px solid #cbd3df;border-radius:9px;padding:11px 12px;font:inherit;color:#263445;background:white}textarea{min-height:100px;resize:vertical}button{background:#2865b0;color:white;border:0;border-radius:9px;padding:10px 16px;font:inherit;font-weight:650;cursor:pointer;margin-top:12px}button:hover{background:#1e4f90}.secondary{background:#e9eff7;color:#2458a6}.secondary:hover{background:#dce7f5}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row input{flex:1;min-width:160px}.row button{margin-top:0}.small{font-size:.8rem;color:#748093}.author{font-weight:750}.body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-top:12px}.comment{background:#f5f7fa;border-radius:8px;padding:10px;margin-top:8px;overflow-wrap:anywhere}.comments{border-top:1px solid #e8edf3;margin-top:16px;padding-top:10px}.error{color:#b42318;margin-top:10px}.hidden{display:none!important}.cardTitle{margin:0 0 15px}#sessionName{font-size:.9rem;color:#667486}footer{text-align:center;padding:20px;color:#8a96a6;font-size:.8rem}@media(max-width:500px){.head,main{padding:15px}section,article{padding:16px}}
 
@@ -70,6 +70,16 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 .postActions .reactionCount{font-size:.76rem;font-weight:650;min-width:7px;text-align:center}
 .postActions .iconButton{margin-left:2px}
 .postActions .reactionButton:hover,.postActions .iconButton:hover{background:#edf2f7}
+/* Lillachatten 0.9.2 – enkel bildväljare på mobil och Mac */
+.pictureMainButton{margin:0;background:#e8eff8;color:#2458a6;padding:9px 13px;border-radius:9px}
+.pictureOptions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:9px}
+.pictureOption{background:white;color:#2458a6;border:1px solid #cbd7e8;margin:0;padding:8px 12px}
+.pictureLinkDetails{width:100%;font-size:.88rem;color:#52677d}
+.pictureLinkDetails summary{cursor:pointer;padding:7px 0}
+.pictureLinkDetails .row{margin:4px 0}
+.imageChooser{border:1px dashed #b5c4d7}
+.imageChooser.dragover{background:#eaf3ff;border-color:#2865b0}
+@media(max-width:500px){.pictureMainButton{width:auto}.pictureOption{flex:1}.pictureOptions{gap:6px}}
 </style></head><body>
 <header><div class="head"><div><div class="brand">Lillachatten</div><div class="muted">Ett eget rum för gemenskap</div></div><div class="row"><span id="sessionName"></span><button id="logoutBtn" class="secondary hidden" type="button">Logga ut</button></div></div></header>
 <main>
@@ -83,15 +93,21 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 <section id="inviteAdminPanel" class="hidden"><h2 class="cardTitle">Bjud in medlem</h2><p class="muted">Ange mottagarens e-postadress. Resend skickar inbjudan direkt. Adressen sparas inte i medlemsregistret.</p><form id="inviteForm"><div class="row"><input id="inviteEmail" type="email" placeholder="Mottagarens e-postadress" aria-label="Mottagarens e-postadress" required><button id="sendInviteBtn">Skicka inbjudan</button></div></form><div id="invitationResult" class="hidden"></div><h2 class="cardTitle" style="margin-top:12px">Inbjudningar</h2><div id="invitationsList"></div><h2 class="cardTitle" style="margin-top:12px">Medlemmar</h2><div id="membersList"></div></section>
 <section><h2 class="cardTitle">Skriv ett inlägg</h2><p class="small">Inlägget publiceras med ditt förnamn automatiskt.</p><form id="postForm"><label for="postText">Vad vill du berätta?</label><textarea id="postText" maxlength="5000" placeholder="Skriv något …"></textarea>
 <div id="imageChooser" class="imageChooser">
-<label for="postImagesInput" class="chooseBtn">+ Lägg till bilder</label>
-<input type="file" id="postImagesInput" accept="image/jpeg,image/png,image/gif,image/webp" multiple>
-<span class="small" style="display:inline">Från Finder, kameran eller dra hit (högst 3)</span>
+<button type="button" id="addPictureButton" class="pictureMainButton" aria-expanded="false" aria-controls="pictureOptions">▧ Lägg till bild</button>
+<div id="pictureOptions" class="pictureOptions hidden">
+<button type="button" id="takePictureButton" class="pictureOption">📷 Ta foto</button>
+<button type="button" id="selectPictureButton" class="pictureOption">▧ Välj bild</button>
+<details class="pictureLinkDetails"><summary>Bild från länk</summary>
 <div class="row"><input id="imageUrl" type="url" placeholder="https://… bildlänk" aria-label="Bildlänk"><button type="button" class="quietButton" id="addImageUrl">Lägg till länk</button></div>
+</details>
+</div>
+<input type="file" id="postImagesInput" accept="image/*" multiple>
+<input type="file" id="takePhotoInput" accept="image/*" capture="environment">
 <div class="imagePreview" id="imagePreview"></div>
 </div><button id="publishBtn">Publicera</button></form></section>
 <h2>Inlägg</h2><div id="feed"></div></div>
 <p id="message" role="status"></p>
-<footer>Lillachatten 0.9.1 · Bilder och inbjudningar via Resend</footer>
+<footer>Lillachatten 0.9.2 · Bilder och inbjudningar via Resend</footer>
 </main>
 <script>
 (()=>{'use strict';const $=id=>document.getElementById(id);let me=null;let posts=[];const inviteToken=new URLSearchParams(location.search).get('invite');
@@ -191,6 +207,23 @@ async function handleFiles(files){
  catch(e){msg(e.message,true)}finally{imageBusy=false;$('postImagesInput').value=''}
 }
 $('postImagesInput').addEventListener('change',e=>handleFiles(Array.from(e.target.files||[])));
+$('takePhotoInput').addEventListener('change',e=>{
+  const selected=Array.from(e.target.files||[]);
+  $('takePhotoInput').value='';
+  closePictureOptions();
+  if(selected.length)handleFiles(selected);
+});
+function closePictureOptions(){show('pictureOptions',false);$('addPictureButton').setAttribute('aria-expanded','false')}
+$('addPictureButton').addEventListener('click',()=>{
+  const open=$('pictureOptions').classList.contains('hidden');
+  show('pictureOptions',open);
+  $('addPictureButton').setAttribute('aria-expanded',String(open));
+});
+$('takePictureButton').addEventListener('click',()=>$('takePhotoInput').click());
+$('selectPictureButton').addEventListener('click',()=>{
+  closePictureOptions();
+  $('postImagesInput').click();
+});
 const zone=$('imageChooser');
 zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('dragover')});
 zone.addEventListener('dragleave',()=>zone.classList.remove('dragover'));
