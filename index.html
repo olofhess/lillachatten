@@ -304,7 +304,8 @@ const recipient=$('inviteEmail').value.trim();const button=$('sendInviteBtn');bu
 try{await api('/api/invitations/send','POST',{email:recipient});
 $('inviteEmail').value='';const dest=$('invitationResult');dest.replaceChildren();
 dest.append(element('strong','','Inbjudan skickad till '+recipient+'.'));
-show('invitationResult',true);await loadInvitations();msg('Resend har tagit emot mejlet för leverans.');
+show('invitationResult',true);msg('Resend har tagit emot mejlet för leverans.');
+loadInvitations().catch(err=>msg('Inbjudan skickad, men listan kunde inte uppdateras: '+err.message,true));
 }catch(err){msg(err.message,true)}finally{button.disabled=false;button.textContent='Skicka inbjudan'}});
 $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const pw=$('newPassword').value;if(pw!==$('repeatPassword').value)return msg('Lösenorden stämmer inte överens.',true);try{await api('/api/setup','POST',{password:pw,setupSecret:$('setupSecret').value});msg('Administratören skapad.');await load()}catch(err){msg(err.message,true)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/login','POST',{email:$('loginEmail').value,password:$('loginPassword').value});$('loginPassword').value='';msg('');await load()}catch(err){msg(err.message,true)}});
