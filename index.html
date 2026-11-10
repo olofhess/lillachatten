@@ -112,6 +112,12 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 .privateBubble.own{margin-left:auto;background:#e9f3ff}
 .privateBy{font-size:.75rem;font-weight:bold}.privateTime{font-size:.7rem;color:#627285;margin-top:4px}
 #privateForm textarea{min-height:62px}#privateForm button{margin-right:6px}
+
+/* Kompakt medlemslista: stängd tills användaren öppnar den. */
+#directoryPanel{padding:9px 12px}
+#toggleMembersButton{margin:0;padding:7px 12px;font-size:.9rem}
+#memberDirectory{margin-top:9px}
+#memberDirectory[hidden]{display:none}
 </style></head><body>
 <header><div class="head"><div><div class="brand">Lillachatten</div><div class="muted">Ett eget rum för gemenskap</div></div><div class="row"><span id="sessionName"></span><button id="privateInboxBtn" class="secondary hidden" type="button">Privat</button><button id="logoutBtn" class="secondary hidden" type="button">Logga ut</button></div></div></header>
 <main>
@@ -138,7 +144,7 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 <input type="file" id="avatarFileInput" accept="image/*" style="display:none">
 <input type="file" id="avatarCameraInput" accept="image/*" capture="environment" style="display:none">
 </section>
-<section id="directoryPanel"><h2 class="cardTitle">Medlemmar</h2><div id="memberDirectory" class="memberDirectory"></div></section>
+<section id="directoryPanel"><button type="button" id="toggleMembersButton" class="secondary" aria-controls="memberDirectory" aria-expanded="false">Visa medlemmar</button><div id="memberDirectory" class="memberDirectory" hidden></div></section>
 <section><h2 class="cardTitle">Skriv ett inlägg</h2><p class="small">Inlägget publiceras med ditt förnamn automatiskt.</p><form id="postForm"><label for="postText">Vad vill du berätta?</label><textarea id="postText" maxlength="5000" placeholder="Skriv något …"></textarea>
 <div id="imageChooser" class="imageChooser">
 <button type="button" id="addPictureButton" class="pictureMainButton" aria-expanded="false" aria-controls="pictureOptions">▧ Lägg till bild</button>
@@ -302,6 +308,15 @@ show('invitationResult',true);await loadInvitations();msg('Resend har tagit emot
 }catch(err){msg(err.message,true)}finally{button.disabled=false;button.textContent='Skicka inbjudan'}});
 $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const pw=$('newPassword').value;if(pw!==$('repeatPassword').value)return msg('Lösenorden stämmer inte överens.',true);try{await api('/api/setup','POST',{password:pw,setupSecret:$('setupSecret').value});msg('Administratören skapad.');await load()}catch(err){msg(err.message,true)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/login','POST',{email:$('loginEmail').value,password:$('loginPassword').value});$('loginPassword').value='';msg('');await load()}catch(err){msg(err.message,true)}});
+
+// Samma knapp öppnar och stänger medlemslistan.
+$('toggleMembersButton').addEventListener('click',()=>{
+ const directory=$('memberDirectory');
+ directory.hidden=!directory.hidden;
+ const expanded=!directory.hidden;
+ $('toggleMembersButton').setAttribute('aria-expanded',String(expanded));
+ $('toggleMembersButton').textContent=expanded?'Dölj medlemmar':'Visa medlemmar';
+});
 $('logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout','POST');me=null;show('privatePanel',false);show('privateInboxBtn',false);msg('Du är utloggad.');await start()}catch(err){msg(err.message,true)}});
 $('associationForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/association','POST',{name:$('associationName').value.trim()});await load();msg('Namnet har sparats.')}catch(err){msg(err.message,true)}});
 async function uploadAvatar(file){
