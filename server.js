@@ -21,11 +21,11 @@ const ADMIN_NAME = 'Olof';
 const sessions = new Map();
 
 function readState() {
-  try { const v = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')); return { users: v.users || [], association: v.association || '', posts: v.posts || [], invitations: v.invitations || [] }; }
+  try { const v = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')); return { users: v.users || [], association: v.association || '', posts: v.posts || [], invitations: v.invitations || [], privateMessages: v.privateMessages || [] }; }
   catch (e) { if (e.code !== 'ENOENT') throw e; return { users: [], association: '', posts: [], invitations: [] }; }
 }
 let state;
-function emptyState() { return {users:[],association:'',posts:[],invitations:[]}; }
+function emptyState() { return {users:[],association:'',posts:[],invitations:[],privateMessages:[]}; }
 async function initialize() {
   if (pool && !process.env.SETUP_SECRET) throw Error('SETUP_SECRET måste anges när PostgreSQL används.');
   if (pool) {
@@ -39,6 +39,7 @@ async function initialize() {
     const result = await pool.query('SELECT value FROM lc_state WHERE id=1');
     state = result.rows[0].value;
   } else state = readState();
+  if (!Array.isArray(state.privateMessages)) state.privateMessages=[];
   let changed = false;
   for (const inv of state.invitations) {
     if (Object.hasOwn(inv,'email')) {
@@ -172,7 +173,7 @@ const server = http.createServer(async (req,res) => {
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       return fs.createReadStream(path.join(__dirname,'index.html')).pipe(res);
     }
-    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9.3',requiresSetupSecret:!!process.env.SETUP_SECRET});
+    if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9.5',requiresSetupSecret:!!process.env.SETUP_SECRET});
     if (pathname === '/api/setup' && req.method==='POST') {
       if (state.users.length) return send(res,409,{error:'Administratören är redan skapad.'});
       const data = await body(req); const pw = data.password;
@@ -347,6 +348,40 @@ const server = http.createServer(async (req,res) => {
       const link=`${proto}://${host}/?invite=${token}`;
       return send(res,201,{invitation:{id:inv.id,status:inv.status,expiresAt:inv.expiresAt},link});
     }
+    // Lillachatten PRIVATE 0.9.5 — endast samtalets två medlemmar.
+    // Ingen admin-genväg. Alla resultat filtreras på den inloggades e-post.
+    if (pathname==='/api/private/conversations' && req.method==='GET') {
+      const result=new Map();
+      for(const m of state.privateMessages){
+        if(m.from!==u.email && m.to!==u.email)continue;
+        const other=m.from===u.email?m.to:m.from;
+        if(!state.users.some(x=>x.email===other))continue;
+        const prior=result.get(other);
+        if(!prior || prior.createdAt<m.createdAt)result.set(other,{email:other,createdAt:m.createdAt});
+      }
+      return send(res,200,{conversations:Array.from(result.values()).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))});
+    }
+    if(pathname==='/api/private/messages' && req.method==='GET') {
+      const other=String(url.searchParams.get('with')||'').toLowerCase();
+      if(!state.users.some(x=>x.email===other && x.email!==u.email))return send(res,404,{error:'Medlemmen hittades inte.'});
+      const messages=state.privateMessages.filter(m=>(m.from===u.email&&m.to===other)||(m.from===other&&m.to===u.email));
+      return send(res,200,{messages:messages.slice(-300).map(m=>({id:m.id,from:m.from,text:m.text,createdAt:m.createdAt}))});
+    }
+    if(pathname==='/api/private/messages' && req.method==='POST') {
+      const data=await body(req);
+      const other=typeof data.to==='string'?data.to.trim().toLowerCase():'';
+      const text=typeof data.text==='string'?data.text.trim():'';
+      if(!state.users.some(x=>x.email===other && x.email!==u.email))return send(res,404,{error:'Medlemmen hittades inte.'});
+      if(!text||text.length>2000)return send(res,400,{error:'Meddelandet måste vara 1–2000 tecken.'});
+      // Enkel begränsning: högst 20 privata meddelanden per minut och konto.
+      const now=Date.now();globalThis.lcPrivateRate ||= new Map();
+      const recent=(globalThis.lcPrivateRate.get(u.email)||[]).filter(t=>now-t<60000);
+      if(recent.length>=20)return send(res,429,{error:'Vänta en stund innan du skickar fler meddelanden.'});
+      recent.push(now);globalThis.lcPrivateRate.set(u.email,recent);
+      const message={id:crypto.randomUUID(),from:u.email,to:other,text,createdAt:new Date(now).toISOString()};
+      state.privateMessages.push(message);await persist();
+      return send(res,201,{message:{id:message.id,from:message.from,text:message.text,createdAt:message.createdAt}});
+    }
     if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,members:state.users.map(userView),posts:state.posts.map(p=>{
       // Tidigare Gilla-markeringar blir hjärtan, utan att ändra databasen.
       const reactions=p.reactions||{};
@@ -462,4 +497,4 @@ const server = http.createServer(async (req,res) => {
     return send(res,404,{error:'Adressen finns inte.'});
   } catch(e) { console.error(e); return send(res,400,{error:'Begäran kunde inte behandlas.'}); }
 });
-initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.9.3 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});
+initialize().then(()=>server.listen(PORT,HOST,()=>console.log(`Lillachatten 0.9.5 körs på http://${HOST}:${PORT} (${pool?'PostgreSQL':'lokal testfil'})`))).catch(e=>{console.error('Serverstart misslyckades:',e.message);process.exit(1)});

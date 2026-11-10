@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lillachatten 0.9.3</title>
+<title>Lillachatten 0.9.5</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#263445;background:#f4f6f9}*{box-sizing:border-box}body{margin:0}header{background:#fff;border-bottom:1px solid #e1e5ec}.head,main{max-width:720px;margin:auto;padding:20px}.head{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:750;font-size:1.3rem;color:#2458a6}.muted{color:#667486;font-size:.89rem}h1{font-size:1.5rem}h2{font-size:1.05rem}section,article{background:#fff;border:1px solid #e3e7ef;border-radius:13px;padding:20px;margin-bottom:15px;box-shadow:0 1px 3px #172c4410}label{display:block;font-weight:650;margin:12px 0 6px}input,textarea{display:block;width:100%;border:1px solid #cbd3df;border-radius:9px;padding:11px 12px;font:inherit;color:#263445;background:white}textarea{min-height:100px;resize:vertical}button{background:#2865b0;color:white;border:0;border-radius:9px;padding:10px 16px;font:inherit;font-weight:650;cursor:pointer;margin-top:12px}button:hover{background:#1e4f90}.secondary{background:#e9eff7;color:#2458a6}.secondary:hover{background:#dce7f5}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row input{flex:1;min-width:160px}.row button{margin-top:0}.small{font-size:.8rem;color:#748093}.author{font-weight:750}.body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-top:12px}.comment{background:#f5f7fa;border-radius:8px;padding:10px;margin-top:8px;overflow-wrap:anywhere}.comments{border-top:1px solid #e8edf3;margin-top:16px;padding-top:10px}.error{color:#b42318;margin-top:10px}.hidden{display:none!important}.cardTitle{margin:0 0 15px}#sessionName{font-size:.9rem;color:#667486}footer{text-align:center;padding:20px;color:#8a96a6;font-size:.8rem}@media(max-width:500px){.head,main{padding:15px}section,article{padding:16px}}
 
@@ -98,14 +98,35 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 .memberCard{display:inline-flex;align-items:center;gap:6px;font-size:.9rem}
 .postAuthor{display:inline-flex;align-items:center;gap:6px;vertical-align:middle}
 .comment .avatar{width:24px;height:24px;font-size:.72rem;margin-right:5px}
+
+/* Lillachatten 0.9.5: privata samtal och personfilter */
+.personFilter{display:flex;align-items:center;gap:9px;margin:7px 0 12px;flex-wrap:wrap}
+.personFilter label{margin:0;white-space:nowrap;font-size:.85rem}
+.personFilter select{border:1px solid #cbd3df;background:#fff;border-radius:8px;padding:8px;font:inherit;max-width:100%}
+.memberCard{flex-wrap:wrap}.memberCard .smallAction{font-size:.75rem;padding:6px 8px;margin:0 0 0 3px}
+.privateHeader{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.privateHeader button{margin:0}.privateHeader h2{margin:0}
+.privatePerson{margin:4px 5px 4px 0;padding:7px 10px;font-size:.85rem}
+.privateThread{height:min(55vh,440px);overflow-y:auto;border:1px solid #dbe3ed;border-radius:9px;padding:10px;margin-top:12px;background:#f8fafd}
+.privateBubble{max-width:87%;width:max-content;border-radius:12px;padding:8px 12px;margin:7px 0;background:#fff;border:1px solid #e1e5ec;white-space:pre-wrap;overflow-wrap:anywhere}
+.privateBubble.own{margin-left:auto;background:#e9f3ff}
+.privateBy{font-size:.75rem;font-weight:bold}.privateTime{font-size:.7rem;color:#627285;margin-top:4px}
+#privateForm textarea{min-height:62px}#privateForm button{margin-right:6px}
 </style></head><body>
-<header><div class="head"><div><div class="brand">Lillachatten</div><div class="muted">Ett eget rum för gemenskap</div></div><div class="row"><span id="sessionName"></span><button id="logoutBtn" class="secondary hidden" type="button">Logga ut</button></div></div></header>
+<header><div class="head"><div><div class="brand">Lillachatten</div><div class="muted">Ett eget rum för gemenskap</div></div><div class="row"><span id="sessionName"></span><button id="privateInboxBtn" class="secondary hidden" type="button">Privat</button><button id="logoutBtn" class="secondary hidden" type="button">Logga ut</button></div></div></header>
 <main>
 <div id="authPanel" class="hidden"><h1>Välkommen</h1>
 <section id="setupPanel" class="hidden"><h2 class="cardTitle">Skapa administratören</h2><p>Den första användaren är <strong>Olof</strong>, med e-postadressen <strong>olof.hesselmark@gmail.com</strong>.</p><p class="muted">Välj ett lösenord för det nya kontot (minst 6 tecken).</p><form id="setupForm"><div id="setupSecretBox" class="hidden"><label for="setupSecret">Startkod från Render</label><input id="setupSecret" type="password" autocomplete="off"></div><label for="newPassword">Nytt lösenord</label><input id="newPassword" type="password" autocomplete="new-password" minlength="6" maxlength="200" required><label for="repeatPassword">Upprepa lösenordet</label><input id="repeatPassword" type="password" autocomplete="new-password" minlength="6" maxlength="200" required><button>Skapa administratör</button></form></section>
 <section id="loginPanel" class="hidden"><h2 class="cardTitle">Logga in</h2><form id="loginForm"><label for="loginEmail">E-postadress</label><input id="loginEmail" type="email" autocomplete="username" required value="olof.hesselmark@gmail.com"><label for="loginPassword">Lösenord</label><input id="loginPassword" type="password" autocomplete="current-password" required><button>Logga in</button></form></section>
 </div>
 <div id="invitePanel" class="hidden"><h1 id="inviteTitle">Inbjudan</h1><section><p id="inviteDetails" class="muted"></p><div id="inviteChoices"><p>Vill du gå med i gruppen?</p><div class="row"><button id="acceptInviteBtn" type="button">Ja, gå med</button><button id="declineInviteBtn" class="secondary" type="button">Nej tack</button></div></div><form id="acceptInviteForm" class="hidden"><label for="memberEmail">Din e-postadress (användar-ID)</label><input id="memberEmail" type="email" maxlength="254" required autocomplete="email"><label for="memberFirstName">Förnamn</label><input id="memberFirstName" maxlength="60" required autocomplete="given-name"><label for="memberPassword">Välj lösenord (minst 6 tecken)</label><input id="memberPassword" type="password" minlength="6" maxlength="200" required autocomplete="new-password"><label for="memberRepeat">Upprepa lösenord</label><input id="memberRepeat" type="password" minlength="6" maxlength="200" required autocomplete="new-password"><button>Bekräfta medlemskap</button></form></section></div>
+<div id="privatePanel" class="hidden"><section>
+  <div class="privateHeader"><button type="button" id="backFromPrivate" class="secondary">← Till chatten</button><h2 id="privateHeading">Privata samtal</h2></div>
+  <p class="small">Meddelandena visas bara för de två deltagarna. Ingen end-to-end-kryptering används.</p>
+  <div id="privateContacts"></div>
+  <div id="privateThread" class="privateThread hidden"></div>
+  <form id="privateForm" class="hidden"><label for="privateText">Meddelande</label><textarea id="privateText" maxlength="2000" rows="2" required placeholder="Skriv privat …"></textarea><button>Skicka</button><button id="privateRefresh" type="button" class="secondary">Uppdatera</button></form>
+</section></div>
 <div id="appPanel" class="hidden"><h1 id="associationHeading">Välkommen</h1><p class="muted">Ett gemensamt flöde för föreningens medlemmar.</p>
 <section id="associationPanel"><h2 class="cardTitle">Föreningens namn</h2><form id="associationForm" class="row"><input id="associationName" placeholder="Till exempel Familjen Andersson" maxlength="80" required aria-label="Föreningens namn"><button>Spara namn</button></form></section>
 <section id="inviteAdminPanel" class="hidden"><h2 class="cardTitle">Bjud in medlem</h2><p class="muted">Ange mottagarens e-postadress. Resend skickar inbjudan direkt. Adressen sparas inte i medlemsregistret.</p><form id="inviteForm"><div class="row"><input id="inviteEmail" type="email" placeholder="Mottagarens e-postadress" aria-label="Mottagarens e-postadress" required><button id="sendInviteBtn">Skicka inbjudan</button></div></form><div id="invitationResult" class="hidden"></div><h2 class="cardTitle" style="margin-top:12px">Inbjudningar</h2><div id="invitationsList"></div><h2 class="cardTitle" style="margin-top:12px">Medlemmar</h2><div id="membersList"></div></section>
@@ -132,9 +153,9 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 <input type="file" id="takePhotoInput" accept="image/*" capture="environment">
 <div class="imagePreview" id="imagePreview"></div>
 </div><button id="publishBtn">Publicera</button></form></section>
-<h2>Inlägg</h2><div id="feed"></div></div>
+<h2>Inlägg</h2><div class="personFilter"><label for="personFilter">Visa inlägg från</label><select id="personFilter"><option value="">Alla medlemmar</option></select></div><div id="feed"></div></div>
 <p id="message" role="status"></p>
-<footer>Lillachatten 0.9.3 · Bilder och inbjudningar via Resend</footer>
+<footer>Lillachatten 0.9.5 · Bilder och inbjudningar via Resend</footer>
 </main>
 <script>
 (()=>{'use strict';const $=id=>document.getElementById(id);let me=null;let posts=[];const inviteToken=new URLSearchParams(location.search).get('invite');
@@ -157,10 +178,53 @@ function showProfile(){
  if(!self.avatarId)dest.textContent=self.firstName.slice(0,1).toUpperCase();
  $('removeAvatarButton').disabled=!self.avatarId;
  const directory=$('memberDirectory');directory.replaceChildren();
- for(const member of members){const line=element('div','memberCard');line.append(avatarOf(member),element('span','',member.firstName));directory.append(line)}
+ for(const member of members){const line=element('div','memberCard');line.append(avatarOf(member),element('span','',member.firstName));
+ const filter=element('button','secondary smallAction','Visa inlägg');filter.type='button';filter.addEventListener('click',()=>{showChat();$('personFilter').value=member.email;render();$('feed').scrollIntoView({behavior:'smooth'});});line.append(filter);
+ if(member.email!==me.email){const pm=element('button','secondary smallAction','Skriv privat');pm.type='button';pm.addEventListener('click',()=>openPrivate(member.email));line.append(pm)}
+ directory.append(line)}
 }
-function render(){const f=$('feed');f.replaceChildren();if(!posts.length){f.append(element('section','muted','Här finns ännu inga inlägg.'));return}
-for(const p of posts){const a=element('article');const d=new Date(p.createdAt).toLocaleString('sv-SE',{dateStyle:'medium',timeStyle:'short'});
+
+// 0.9.5: en enkel privat dialog i samma app (utan tredjepartstjänst).
+let privateOther=null;
+function showChat(){show('privatePanel',false);show('appPanel',true);privateOther=null;}
+async function privateContacts(){
+ const v=await api('/api/private/conversations');const dest=$('privateContacts');dest.replaceChildren();
+ const heading=element('h3','','Dina samtal');dest.append(heading);
+ if(!v.conversations.length)dest.append(element('p','muted','Inga privata samtal ännu. Välj en medlem nedan.'));
+ for(const c of v.conversations){const m=findMember(c.email);if(!m)continue;const b=element('button','secondary privatePerson',m.firstName);b.type='button';b.addEventListener('click',()=>openPrivate(c.email));dest.append(b)}
+ const all=element('h3','','Starta samtal');dest.append(all);
+ for(const m of members.filter(x=>x.email!==me.email)){
+ const b=element('button','secondary privatePerson',m.firstName);b.type='button';b.addEventListener('click',()=>openPrivate(m.email));dest.append(b)}
+}
+async function showInbox(){show('appPanel',false);show('privatePanel',true);privateOther=null;show('privateThread',false);show('privateForm',false);$('privateHeading').textContent='Privata samtal';await privateContacts();}
+async function openPrivate(email){
+ if(!findMember(email)||email===me.email)return;
+ privateOther=email;show('appPanel',false);show('privatePanel',true);$('privateHeading').textContent='Samtal med '+findMember(email).firstName;
+ show('privateThread',true);show('privateForm',true);await privateContacts();await refreshPrivate();
+}
+async function refreshPrivate(){
+ if(!privateOther)return;
+ const other=privateOther;const v=await api('/api/private/messages?with='+encodeURIComponent(other));
+ if(privateOther!==other)return;
+ const list=$('privateThread');list.replaceChildren();
+ if(!v.messages.length)list.append(element('p','muted','Skriv det första meddelandet.'));
+ for(const m of v.messages){const bubble=element('div','privateBubble'+(m.from===me.email?' own':''));
+ bubble.append(element('div','privateBy',m.from===me.email?'Du':(findMember(m.from)?.firstName||'Medlem')));
+ bubble.append(element('div','',m.text));bubble.append(element('div','privateTime',new Date(m.createdAt).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})));list.append(bubble)}
+ list.scrollTop=list.scrollHeight;
+}
+$('privateInboxBtn').addEventListener('click',()=>showInbox().catch(e=>msg(e.message,true)));
+$('backFromPrivate').addEventListener('click',showChat);
+$('privateRefresh').addEventListener('click',()=>refreshPrivate().catch(e=>msg(e.message,true)));
+$('privateForm').addEventListener('submit',async e=>{e.preventDefault();if(!privateOther)return;
+ const input=$('privateText'),button=e.submitter;button.disabled=true;
+ try{await api('/api/private/messages','POST',{to:privateOther,text:input.value});input.value='';await refreshPrivate();msg('')}
+ catch(err){msg(err.message,true)}finally{button.disabled=false}
+});
+$('personFilter').addEventListener('change',render);
+
+function render(){const f=$('feed');f.replaceChildren();const selected=$('personFilter').value;const visible=selected?posts.filter(p=>p.email===selected):posts;if(!visible.length){f.append(element('section','muted',selected?'Inga inlägg från denna medlem.':'Här finns ännu inga inlägg.'));return}
+for(const p of visible){const a=element('article');const d=new Date(p.createdAt).toLocaleString('sv-SE',{dateStyle:'medium',timeStyle:'short'});
 const who=element('span','postAuthor');who.append(avatarOf(findMember(p.email)||{firstName:p.author}),element('span','author',p.author));
 a.append(who,document.createTextNode(' · '+d));
 if(p.editedAt)a.append(element('span','small',' · redigerat'));
@@ -222,8 +286,8 @@ if(me&&p.email===me.email){
 a.append(tools);
 const c=element('div','comments');for(const v of p.comments||[]){const item=element('div','comment');item.append(avatarOf(findMember(v.email)||{firstName:v.author}),element('strong','',v.author+': '),document.createTextNode(v.text));c.append(item)}
 const form=element('form','row');const input=element('input');input.placeholder='Skriv en kommentar …';input.maxLength=1000;input.required=true;const b=element('button','','Kommentera');form.append(input,b);form.addEventListener('submit',async ev=>{ev.preventDefault();try{await api('/api/posts/'+p.id+'/comments','POST',{text:input.value.trim()});await load();msg('Kommentar publicerad.')}catch(e){msg(e.message,true)}});c.append(form);a.append(c);f.append(a)}}
-async function load(){const v=await api('/api/me');me=v.user;posts=v.posts;members=v.members||[];$('sessionName').textContent=me.firstName+' ('+(me.role==='admin'?'administratör':'medlem')+')';$('associationHeading').textContent=v.association||'Välkommen, '+me.firstName;$('associationName').value=v.association;show('authPanel',false);show('appPanel',true);show('logoutBtn',true);show('associationPanel',me.role==='admin');show('inviteAdminPanel',me.role==='admin');if(me.role==='admin')await loadInvitations();showProfile();render()}
-async function start(){if(inviteToken){await showInvitation();return}try{await load()}catch(e){if(!e.message.includes('Logga in först')){msg(e.message,true);return}const s=await api('/api/status');show('authPanel',true);show('appPanel',false);show('logoutBtn',false);show('setupPanel',s.needsSetup);show('setupSecretBox',s.requiresSetupSecret);show('loginPanel',!s.needsSetup)}}
+async function load(){const v=await api('/api/me');me=v.user;posts=v.posts;members=v.members||[];$('sessionName').textContent=me.firstName+' ('+(me.role==='admin'?'administratör':'medlem')+')';$('associationHeading').textContent=v.association||'Välkommen, '+me.firstName;$('associationName').value=v.association;show('authPanel',false);show('appPanel',true);show('logoutBtn',true);show('privateInboxBtn',true);show('associationPanel',me.role==='admin');show('inviteAdminPanel',me.role==='admin');if(me.role==='admin')await loadInvitations();showProfile();const filter=$('personFilter'),old=filter.value;filter.replaceChildren();const all=element('option','','Alla medlemmar');all.value='';filter.append(all);for(const m of members){const option=element('option','',m.firstName);option.value=m.email;filter.append(option)}filter.value=members.some(m=>m.email===old)?old:'';render()}
+async function start(){if(inviteToken){await showInvitation();return}try{await load()}catch(e){if(!e.message.includes('Logga in först')){msg(e.message,true);return}const s=await api('/api/status');show('authPanel',true);show('appPanel',false);show('logoutBtn',false);show('privateInboxBtn',false);show('privatePanel',false);show('setupPanel',s.needsSetup);show('setupSecretBox',s.requiresSetupSecret);show('loginPanel',!s.needsSetup)}}
 async function loadInvitations(){const v=await api('/api/invitations');const list=$('invitationsList');list.replaceChildren();for(const item of v.invitations){list.append(element('div','','Inbjudan '+new Date(item.createdAt).toLocaleDateString('sv-SE')+' — '+({pending:'Väntar',accepted:'Accepterad',declined:'Avböjd',replaced:'Ersatt'}[item.status]||item.status)))}if(!v.invitations.length)list.append(element('div','muted','Inga inbjudningar.'));const ml=$('membersList');ml.replaceChildren();for(const member of v.members){const line=element('div','memberCard');line.append(avatarOf(member),element('span','',member.firstName+' · '+member.email));ml.append(line)}}
 async function showInvitation(){show('authPanel',false);show('appPanel',false);show('logoutBtn',false);show('invitePanel',true);try{const v=await api('/api/invitations/inspect?token='+encodeURIComponent(inviteToken));$('inviteDetails').textContent='Du är inbjuden till '+v.association+'. Välj om du vill gå med.';}catch(e){show('inviteChoices',false);$('inviteDetails').textContent=e.message;}}
 $('acceptInviteBtn').addEventListener('click',()=>{show('inviteChoices',false);show('acceptInviteForm',true)});
@@ -238,7 +302,7 @@ show('invitationResult',true);await loadInvitations();msg('Resend har tagit emot
 }catch(err){msg(err.message,true)}finally{button.disabled=false;button.textContent='Skicka inbjudan'}});
 $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const pw=$('newPassword').value;if(pw!==$('repeatPassword').value)return msg('Lösenorden stämmer inte överens.',true);try{await api('/api/setup','POST',{password:pw,setupSecret:$('setupSecret').value});msg('Administratören skapad.');await load()}catch(err){msg(err.message,true)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/login','POST',{email:$('loginEmail').value,password:$('loginPassword').value});$('loginPassword').value='';msg('');await load()}catch(err){msg(err.message,true)}});
-$('logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout','POST');me=null;msg('Du är utloggad.');await start()}catch(err){msg(err.message,true)}});
+$('logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout','POST');me=null;show('privatePanel',false);show('privateInboxBtn',false);msg('Du är utloggad.');await start()}catch(err){msg(err.message,true)}});
 $('associationForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/association','POST',{name:$('associationName').value.trim()});await load();msg('Namnet har sparats.')}catch(err){msg(err.message,true)}});
 async function uploadAvatar(file){
  if(!file)return;
