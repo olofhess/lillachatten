@@ -167,7 +167,7 @@ textarea{min-height:64px}button{padding:8px 12px;margin-top:8px}
 (()=>{'use strict';const $=id=>document.getElementById(id);let me=null;let posts=[];const inviteToken=new URLSearchParams(location.search).get('invite');
 function show(el,yes){$(el).classList.toggle('hidden',!yes)}
 function msg(text,isError=false){$('message').textContent=text;$('message').className=isError?'error':'muted'}
-async function api(path,method='GET',data){const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),credentials:'same-origin'});let v;try{v=await r.json()}catch{throw Error('Servern svarade inte korrekt.')}if(!r.ok){if(r.status===404&&v.error==='Adressen finns inte.')throw Error('Den gamla serverversionen körs. Stoppa med Ctrl+C och starta om Lillachatten 0.6 med npm start.');throw Error(v.error||'Något gick fel')}return v}
+async function api(path,method='GET',data,signal){const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),credentials:'same-origin',signal});let v;try{v=await r.json()}catch{throw Error('Servern svarade inte korrekt.')}if(!r.ok){if(r.status===404&&v.error==='Adressen finns inte.')throw Error('Den gamla serverversionen körs. Stoppa med Ctrl+C och starta om Lillachatten 0.6 med npm start.');throw Error(v.error||'Något gick fel')}return v}
 function element(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 function avatarOf(user,large=false){
  const av=element('span','avatar'+(large?' avatarLarge':''));
@@ -298,13 +298,28 @@ async function showInvitation(){show('authPanel',false);show('appPanel',false);s
 $('acceptInviteBtn').addEventListener('click',()=>{show('inviteChoices',false);show('acceptInviteForm',true)});
 $('declineInviteBtn').addEventListener('click',async()=>{try{await api('/api/invitations/respond','POST',{token:inviteToken,decision:'decline'});show('inviteChoices',false);$('inviteDetails').textContent='Du har avböjt inbjudan.';msg('');}catch(e){msg(e.message,true)}});
 $('acceptInviteForm').addEventListener('submit',async e=>{e.preventDefault();const password=$('memberPassword').value;if(password!==$('memberRepeat').value)return msg('Lösenorden stämmer inte överens.',true);try{await api('/api/invitations/respond','POST',{token:inviteToken,decision:'accept',email:$('memberEmail').value.trim(),firstName:$('memberFirstName').value.trim(),password});history.replaceState({},'', '/');show('invitePanel',false);await load();msg('Välkommen som medlem!')}catch(err){msg(err.message,true)}});
+// Inbjudningar: visa bade fel och framgang direkt under formularet.
+// Knappen aterstalls alltid, och ett forlangt natverksanrop kan avbrytas.
 $('inviteForm').addEventListener('submit',async e=>{e.preventDefault();
-const recipient=$('inviteEmail').value.trim();const button=$('sendInviteBtn');button.disabled=true;button.textContent='Skickar …';
-try{await api('/api/invitations/send','POST',{email:recipient});
-$('inviteEmail').value='';const dest=$('invitationResult');dest.replaceChildren();
-dest.append(element('strong','','Inbjudan skickad till '+recipient+'.'));
-show('invitationResult',true);msg('Resend har tagit emot mejlet för leverans.');
-}catch(err){msg(err.message,true)}finally{button.disabled=false;button.textContent='Skicka inbjudan'}});
+const recipient=$('inviteEmail').value.trim();const button=$('sendInviteBtn');
+if(button.disabled)return;
+const dest=$('invitationResult');
+function inviteStatus(text,isError){dest.replaceChildren();
+ const status=element('div',isError?'error':'muted',text);
+ status.setAttribute('role','status');dest.append(status);show('invitationResult',true);
+}
+button.disabled=true;button.textContent='Skickar …';
+inviteStatus('Skickar inbjudan till '+recipient+' …',false);
+const controller=new AbortController();
+const timeout=setTimeout(()=>controller.abort(),20000);
+try{await api('/api/invitations/send','POST',{email:recipient},controller.signal);
+$('inviteEmail').value='';
+inviteStatus('Resend har tagit emot inbjudan till '+recipient+' för leverans.',false);
+}catch(err){
+ const reason=err.name==='AbortError'?'Servern svarade inte inom 20 sekunder. Kontrollera Resend innan du försöker igen, så att samma inbjudan inte skickas dubbelt.':err.message;
+ inviteStatus('Inbjudan kunde inte bekräftas: '+reason,true);
+}finally{clearTimeout(timeout);button.disabled=false;button.textContent='Skicka inbjudan';}
+});
 $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const pw=$('newPassword').value;if(pw!==$('repeatPassword').value)return msg('Lösenorden stämmer inte överens.',true);try{await api('/api/setup','POST',{password:pw,setupSecret:$('setupSecret').value});msg('Administratören skapad.');await load()}catch(err){msg(err.message,true)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/login','POST',{email:$('loginEmail').value,password:$('loginPassword').value});$('loginPassword').value='';msg('');await load()}catch(err){msg(err.message,true)}});
 
