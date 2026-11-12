@@ -16,8 +16,8 @@ const IMAGE_DIR = path.join(__dirname, 'data', 'images');
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_IMAGES_POST = 3;
 const imageUploads = new Map();
-const ADMIN_EMAIL = 'olof.hesselmark@gmail.com';
-const ADMIN_NAME = 'Olof';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'olof.hesselmark@gmail.com').trim().toLowerCase();
+const ADMIN_NAME = (process.env.ADMIN_NAME || 'Olof').trim();
 const sessions = new Map();
 
 function readState() {
