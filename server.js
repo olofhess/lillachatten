@@ -21,10 +21,83 @@ const ADMIN_NAME = (process.env.ADMIN_NAME || 'Olof').trim();
 const sessions = new Map();
 
 function readState() {
-  try { const v = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')); return { users: v.users || [], association: v.association || '', posts: v.posts || [], invitations: v.invitations || [], privateMessages: v.privateMessages || [] }; }
-  catch (e) { if (e.code !== 'ENOENT') throw e; return { users: [], association: '', posts: [], invitations: [] }; }
+  try { const v = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')); return { ...v, users: v.users || [], association: v.association || '', posts: v.posts || [], invitations: v.invitations || [], privateMessages: v.privateMessages || [] }; }
+  catch (e) { if (e.code !== 'ENOENT') throw e; return emptyState(); }
 }
 let state;
+// Data Model 1.0: additive, idempotent migration of legacy single-group state.
+// IDs must be persisted and never regenerated on subsequent restarts.
+function migrateDataModel1() {
+  let changed = false;
+  const stamp = () => new Date().toISOString();
+  const ensure = (obj, key, value) => { if (obj[key] === undefined || obj[key] === null) { obj[key] = value(); changed = true; } };
+  ensure(state, 'groupId', () => crypto.randomUUID());
+  ensure(state, 'groupCreatedAt', stamp);
+  ensure(state, 'groupUpdatedAt', () => state.groupCreatedAt);
+  ensure(state, 'schemaVersion', () => 1);
+  const members = new Map();
+  for (const user of state.users) {
+    ensure(user, 'id', () => crypto.randomUUID());
+    ensure(user, 'groupId', () => state.groupId);
+    ensure(user, 'joinedAt', stamp);
+    ensure(user, 'status', () => 'active');
+    members.set(user.email, user);
+  }
+  // Do not fabricate authors if legacy data is inconsistent; stop before writing.
+  for (const post of state.posts) {
+    if (!members.has(post.email)) throw Error('Data Model 1.0: okänd inläggsförfattare '+post.email);
+    ensure(post, 'groupId', () => state.groupId);
+    ensure(post, 'authorId', () => members.get(post.email).id);
+    ensure(post, 'deletedAt', () => null);
+    for (const comment of post.comments || []) {
+      if (!members.has(comment.email)) throw Error('Data Model 1.0: okänd kommentarsförfattare '+comment.email);
+      ensure(comment, 'id', () => crypto.randomUUID());
+      ensure(comment, 'groupId', () => state.groupId);
+      ensure(comment, 'postId', () => post.id);
+      ensure(comment, 'authorId', () => members.get(comment.email).id);
+      ensure(comment, 'deletedAt', () => null);
+    }
+  }
+  for (const message of state.privateMessages || []) {
+    if (!members.has(message.from) || !members.has(message.to)) throw Error('Data Model 1.0: okänd privatmeddelandepart');
+    ensure(message, 'groupId', () => state.groupId);
+    ensure(message, 'senderId', () => members.get(message.from).id);
+    ensure(message, 'recipientId', () => members.get(message.to).id);
+  }
+  for (const inv of state.invitations || []) ensure(inv, 'groupId', () => state.groupId);
+  return changed;
+}
+
+// Explicit, read-only group snapshot. No passwords, invites, sessions or private messages.
+// Images are represented by references only; a full archive must also export image bytes.
+function canonicalSnapshot() {
+  const memberId = new Map(state.users.map(u => [u.email, u.id]));
+  const reactions = [];
+  const comments = [];
+  const posts = state.posts.map(p => {
+    for (const c of p.comments || []) comments.push({
+      id:c.id, groupId:state.groupId, postId:p.id, authorId:c.authorId,
+      text:c.text, createdAt:c.createdAt, deletedAt:c.deletedAt ?? null
+    });
+    const r = p.reactions || {};
+    for (const kind of ['up','down','heart']) {
+      const actors = Array.isArray(r[kind]) ? r[kind] : (kind === 'heart' && Array.isArray(p.likes) ? p.likes : []);
+      for (const email of actors) {
+        if (!memberId.has(email)) throw Error('Reaktion från okänd medlem');
+        reactions.push({groupId:state.groupId, postId:p.id, memberId:memberId.get(email), kind, isActive:true});
+      }
+    }
+    return {id:p.id, groupId:state.groupId, authorId:p.authorId,
+      text:p.text, createdAt:p.createdAt, editedAt:p.editedAt ?? null,
+      deletedAt:p.deletedAt ?? null, imageIds:p.images || []};
+  });
+  return {schemaVersion:1, exportType:'group-metadata-preview', exportedAt:new Date().toISOString(),
+    group:{id:state.groupId, name:state.association, createdAt:state.groupCreatedAt, updatedAt:state.groupUpdatedAt},
+    members:state.users.map(u => ({id:u.id, groupId:state.groupId, displayName:u.firstName,
+      role:u.role, email:u.email || null, avatarImageId:u.avatarId || null,
+      joinedAt:u.joinedAt, status:u.status})), posts, comments, reactions};
+}
+
 function emptyState() { return {users:[],association:'',posts:[],invitations:[],privateMessages:[]}; }
 async function initialize() {
   if (pool && !process.env.SETUP_SECRET) throw Error('SETUP_SECRET måste anges när PostgreSQL används.');
@@ -48,6 +121,7 @@ async function initialize() {
       changed=true;
     }
   }
+  if (migrateDataModel1()) changed = true;
   if (changed) await persist();
 }
 let saveQueue=Promise.resolve();
@@ -157,7 +231,7 @@ function session(req) {
   return match && sessions.get(match[1]);
 }
 function requireLogin(req, res) { const user = session(req); if (!user) send(res,401,{error:'Logga in först.'}); return user; }
-function userView(user) { return { email:user.email, firstName:user.firstName, role:user.role, avatarId:user.avatarId||null }; }
+function userView(user) { return { id:user.id, groupId:user.groupId, email:user.email, firstName:user.firstName, role:user.role, avatarId:user.avatarId||null }; }
 function issueSession(res,user) {
   const token = crypto.randomBytes(32).toString('hex'); sessions.set(token,user.email);
   return `lc_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`;
@@ -181,7 +255,7 @@ const server = http.createServer(async (req,res) => {
       if (typeof pw !== 'string' || pw.length < 6 || pw.length > 200) return send(res,400,{error:'Välj ett lösenord med 6–200 tecken.'});
       const salt=crypto.randomBytes(16).toString('hex');
       const user={email:ADMIN_EMAIL,firstName:ADMIN_NAME,role:'admin',salt,hash:passwordHash(pw,salt)};
-      state.users.push(user); await persist();
+      state.users.push(user); migrateDataModel1(); await persist();
       return send(res,201,{user:userView(user)}, {'Set-Cookie':issueSession(res,user)});
     }
     if (pathname === '/api/login' && req.method==='POST') {
@@ -212,7 +286,7 @@ const server = http.createServer(async (req,res) => {
       if (state.users.some(x=>x.email===email)) return send(res,409,{error:'Det finns redan en medlem med den adressen.'});
       const salt=crypto.randomBytes(16).toString('hex');
       const user={email,firstName,role:'member',salt,hash:passwordHash(pw,salt)};
-      state.users.push(user);inv.status='accepted';inv.tokenHash=null;await persist();
+      state.users.push(user);inv.status='accepted';inv.tokenHash=null;migrateDataModel1();await persist();
       return send(res,201,{user:userView(user)}, {'Set-Cookie':issueSession(res,user)});
     }
     if (pathname === '/api/logout' && req.method==='POST') {
@@ -378,9 +452,13 @@ const server = http.createServer(async (req,res) => {
       const recent=(globalThis.lcPrivateRate.get(u.email)||[]).filter(t=>now-t<60000);
       if(recent.length>=20)return send(res,429,{error:'Vänta en stund innan du skickar fler meddelanden.'});
       recent.push(now);globalThis.lcPrivateRate.set(u.email,recent);
-      const message={id:crypto.randomUUID(),from:u.email,to:other,text,createdAt:new Date(now).toISOString()};
+      const message={id:crypto.randomUUID(),groupId:state.groupId,senderId:u.id,recipientId:state.users.find(x=>x.email===other).id,from:u.email,to:other,text,createdAt:new Date(now).toISOString()};
       state.privateMessages.push(message);await persist();
       return send(res,201,{message:{id:message.id,from:message.from,text:message.text,createdAt:message.createdAt}});
+    }
+    if (pathname === '/api/group-model/v1' && req.method==='GET') {
+      if (u.role !== 'admin') return send(res,403,{error:'Endast administratören kan exportera.'});
+      return send(res,200,canonicalSnapshot());
     }
     if (pathname === '/api/me' && req.method==='GET') return send(res,200,{user:userView(u),association:state.association,members:state.users.map(userView),posts:state.posts.map(p=>{
       // Tidigare Gilla-markeringar blir hjärtan, utan att ändra databasen.
@@ -395,7 +473,7 @@ const server = http.createServer(async (req,res) => {
       if (u.role!=='admin') return send(res,403,{error:'Endast administratören kan ändra namnet.'});
       const data=await body(req); const name=String(data.name||'').trim();
       if (!name || name.length>80) return send(res,400,{error:'Namnet måste vara 1–80 tecken.'});
-      state.association=name;await persist();return send(res,200,{name});
+      state.association=name;state.groupUpdatedAt=new Date().toISOString();await persist();return send(res,200,{name});
     }
     if (pathname === '/api/posts' && req.method==='POST') {
       const data=await body(req);const text=String(data.text||'').trim();
@@ -404,7 +482,7 @@ const server = http.createServer(async (req,res) => {
       if(text.length>5000 || images.length>MAX_IMAGES_POST || images.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id)) || new Set(images).size!==images.length)
         return send(res,400,{error:'Felaktiga bildval (högst tre).'});
       for(const id of images){const img=await imageMeta(id);if(!img||img.owner!==u.email)return send(res,403,{error:'En bild saknas eller tillhör en annan medlem.'});}
-      const post={id:crypto.randomUUID(),author:u.firstName,email:u.email,text,images,createdAt:new Date().toISOString(),comments:[]};
+      const post={id:crypto.randomUUID(),groupId:state.groupId,authorId:u.id,author:u.firstName,email:u.email,text,images,createdAt:new Date().toISOString(),deletedAt:null,comments:[]};
       state.posts.unshift(post);await persist();return send(res,201,{post});
     }
     // 0.9.3: radera exakt en publicerad bild, endast från eget inlägg.
@@ -492,7 +570,7 @@ const server = http.createServer(async (req,res) => {
       if (!post) return send(res,404,{error:'Inlägget hittades inte.'});
       const data=await body(req);const text=String(data.text||'').trim();
       if (!text || text.length>1000) return send(res,400,{error:'Kommentaren måste vara 1–1000 tecken.'});
-      post.comments.push({author:u.firstName,email:u.email,text,createdAt:new Date().toISOString()});await persist();return send(res,201,{ok:true});
+      post.comments.push({id:crypto.randomUUID(),groupId:state.groupId,postId:post.id,authorId:u.id,author:u.firstName,email:u.email,text,createdAt:new Date().toISOString(),deletedAt:null});await persist();return send(res,201,{ok:true});
     }
     return send(res,404,{error:'Adressen finns inte.'});
   } catch(e) { console.error(e); return send(res,400,{error:'Begäran kunde inte behandlas.'}); }
