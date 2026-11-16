@@ -173,6 +173,11 @@ const server = http.createServer(async (req,res) => {
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
       return fs.createReadStream(path.join(__dirname,'index.html')).pipe(res);
     }
+    if (pathname === '/privacy' || pathname === '/privacy/') {
+      if (req.method !== 'GET') return send(res,405,{error:'Metoden stöds inte'});
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+      return fs.createReadStream(path.join(__dirname,'privacy.html')).pipe(res);
+    }
     if (pathname === '/api/status' && req.method==='GET') return send(res,200,{needsSetup:state.users.length===0,adminEmail:ADMIN_EMAIL,version:'0.9.5',requiresSetupSecret:!!process.env.SETUP_SECRET});
     if (pathname === '/api/setup' && req.method==='POST') {
       if (state.users.length) return send(res,409,{error:'Administratören är redan skapad.'});
